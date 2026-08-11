@@ -7,6 +7,7 @@ from pydantic import BaseModel, Field, model_validator
 
 from app.models.trip import TripStatus
 from app.schemas.itinerary import ItinerarySchema
+from app.schemas.recommendation import RecommendationImage
 
 
 # ── Request schemas ──────────────────────────────────────────────
@@ -20,6 +21,7 @@ class TripCreate(BaseModel):
     num_travellers: Optional[int] = Field(None, ge=1)
     budget: Optional[str] = Field(None, max_length=100)
     special_requirements: Optional[str] = None
+    destination_image: Optional[RecommendationImage] = None
 
     @model_validator(mode="after")
     def validate_dates(self):
@@ -38,6 +40,7 @@ class TripUpdate(BaseModel):
     num_travellers: Optional[int] = Field(None, ge=1)
     budget: Optional[str] = Field(None, max_length=100)
     special_requirements: Optional[str] = None
+    destination_image: Optional[RecommendationImage] = None
 
     @model_validator(mode="after")
     def validate_dates(self):
@@ -57,6 +60,7 @@ class TripResponse(BaseModel):
     start_date: date
     end_date: date
     status: TripStatus
+    destination_image: Optional[RecommendationImage] = None
     created_at: datetime
     updated_at: datetime
 

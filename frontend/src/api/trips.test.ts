@@ -17,20 +17,33 @@ describe("Trips API", () => {
     vi.clearAllMocks();
   });
 
-  it("calls POST /trips to create trip", async () => {
+  it("calls POST /trips to create trip with destination_image metadata", async () => {
     const payload = {
-      title: "Japan Expedition",
-      destination: "Kyoto",
+      title: "Goa Beach Trip",
+      destination: "Goa, India",
       start_date: "2026-10-01",
       end_date: "2026-10-10",
-      status: "DRAFT" as const,
+      status: "PLANNED" as const,
     };
-    (api.post as ReturnType<typeof vi.fn>).mockResolvedValue({ data: { id: 42, ...payload } });
+
+    const mockResponse = {
+      id: 42,
+      ...payload,
+      destination_image: {
+        url: "https://images.pexels.com/photos/123/large.jpg",
+        photographer: "John Doe",
+        photographer_url: "https://www.pexels.com/@johndoe",
+        pexels_url: "https://www.pexels.com/photo/123",
+      },
+    };
+
+    (api.post as ReturnType<typeof vi.fn>).mockResolvedValue({ data: mockResponse });
 
     const res = await tripsApi.createTrip(payload);
 
     expect(api.post).toHaveBeenCalledWith("/trips", payload);
     expect(res.data.id).toBe(42);
+    expect(res.data.destination_image?.url).toBe("https://images.pexels.com/photos/123/large.jpg");
   });
 
   it("calls GET /trips with status filter", async () => {

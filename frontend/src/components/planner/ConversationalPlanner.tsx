@@ -121,6 +121,7 @@ export default function ConversationalPlanner({
           num_travellers: parsedTravellers,
           budget: budgetInput.trim() || null,
           special_requirements: specialReqInput.trim() || null,
+          destination_image: selectedPick.image,
         });
 
         tripId = createResp.data.id;

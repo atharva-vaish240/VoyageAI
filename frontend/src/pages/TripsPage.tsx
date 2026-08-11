@@ -11,6 +11,7 @@ export default function TripsPage() {
   const [trips, setTrips] = useState<TripResponse[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [failedImageUrls, setFailedImageUrls] = useState<Record<string, boolean>>({});
 
   const [isCreateOpen, setIsCreateOpen] = useState(false);
 
@@ -58,6 +59,10 @@ export default function TripsPage() {
       isMounted = false;
     };
   }, [filter]);
+
+  const handleImageError = (url: string) => {
+    setFailedImageUrls((prev) => ({ ...prev, [url]: true }));
+  };
 
   const getStatusBadge = (status: string) => {
     switch (status) {
@@ -172,40 +177,83 @@ export default function TripsPage() {
         </div>
       ) : (
         <div className="trips-grid">
-          {trips.map((trip) => (
-            <div
-              key={trip.id}
-              className="trip-card"
-              onClick={() => navigate(`/app/trips/${trip.id}`)}
-              role="button"
-              tabIndex={0}
-              onKeyDown={(e) => {
-                if (e.key === "Enter" || e.key === " ") {
-                  e.preventDefault();
-                  navigate(`/app/trips/${trip.id}`);
-                }
-              }}
-            >
-              <div className="trip-card-header">
-                <h3 className="trip-card-title">{trip.title}</h3>
-                {getStatusBadge(trip.status)}
-              </div>
+          {trips.map((trip) => {
+            const destImg = trip.destination_image;
+            const imageUrl = destImg?.url;
+            const hasValidImage = imageUrl && !failedImageUrls[imageUrl];
 
-              {trip.destination && (
-                <div className="trip-card-destination">
-                  📍 {trip.destination}
+            return (
+              <div
+                key={trip.id}
+                className="trip-card"
+                onClick={() => navigate(`/app/trips/${trip.id}`)}
+                role="button"
+                tabIndex={0}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter" || e.key === " ") {
+                    e.preventDefault();
+                    navigate(`/app/trips/${trip.id}`);
+                  }
+                }}
+                data-testid={`trip-card-${trip.id}`}
+              >
+                {hasValidImage && destImg && (
+                  <div className="trip-card-image-wrapper">
+                    <img
+                      src={destImg.url}
+                      alt={trip.destination || trip.title}
+                      className="trip-card-image"
+                      onError={() => handleImageError(destImg.url)}
+                      data-testid={`trip-image-${trip.id}`}
+                    />
+                    <div
+                      className="trip-card-image-attribution"
+                      onClick={(e) => e.stopPropagation()}
+                      data-testid={`trip-attribution-${trip.id}`}
+                    >
+                      Photo by{" "}
+                      <a
+                        href={destImg.photographer_url}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                      >
+                        {destImg.photographer}
+                      </a>{" "}
+                      on{" "}
+                      <a
+                        href={destImg.pexels_url}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                      >
+                        Pexels
+                      </a>
+                    </div>
+                  </div>
+                )}
+
+                <div className="trip-card-body">
+                  <div className="trip-card-header">
+                    <h3 className="trip-card-title">{trip.title}</h3>
+                    {getStatusBadge(trip.status)}
+                  </div>
+
+                  {trip.destination && (
+                    <div className="trip-card-destination">
+                      📍 {trip.destination}
+                    </div>
+                  )}
+
+                  <div className="trip-card-dates">
+                    📅 {formatDate(trip.start_date)} — {formatDate(trip.end_date)}
+                  </div>
+
+                  <div className="trip-card-footer">
+                    <span className="view-details-link">View Details →</span>
+                  </div>
                 </div>
-              )}
-
-              <div className="trip-card-dates">
-                📅 {formatDate(trip.start_date)} — {formatDate(trip.end_date)}
               </div>
-
-              <div className="trip-card-footer">
-                <span className="view-details-link">View Details →</span>
-              </div>
-            </div>
-          ))}
+            );
+          })}
         </div>
       )}
 

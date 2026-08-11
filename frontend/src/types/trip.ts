@@ -1,4 +1,5 @@
 import type { ItinerarySchema } from "./itinerary";
+import type { RecommendationImage } from "./recommendation";
 
 export type TripStatus = "DRAFT" | "PLANNED" | "COMPLETED";
 
@@ -13,6 +14,7 @@ export interface TripCreate {
   num_travellers?: number | null;
   budget?: string | null;
   special_requirements?: string | null;
+  destination_image?: RecommendationImage | null;
 }
 
 export interface TripUpdate {
@@ -24,6 +26,7 @@ export interface TripUpdate {
   num_travellers?: number | null;
   budget?: string | null;
   special_requirements?: string | null;
+  destination_image?: RecommendationImage | null;
 }
 
 export interface TripResponse {
@@ -34,6 +37,7 @@ export interface TripResponse {
   start_date: string;
   end_date: string;
   status: TripStatus;
+  destination_image?: RecommendationImage | null;
   created_at: string;
   updated_at: string;
 }

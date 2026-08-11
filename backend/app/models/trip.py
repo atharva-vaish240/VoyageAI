@@ -50,6 +50,9 @@ class Trip(Base):
     # Persisted AI Itinerary JSON
     itinerary = Column(JSON, nullable=True)
 
+    # Persisted Pexels Destination Image Metadata JSON
+    destination_image = Column(JSON, nullable=True)
+
     created_at = Column(
         DateTime(timezone=True),
         nullable=False,
