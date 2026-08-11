@@ -138,6 +138,31 @@
   cursor: not-allowed;
 }
 
+.itinerary-header-actions {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+}
+
+.btn-export-pdf {
+  background-color: var(--social-bg);
+  color: var(--text-h);
+  border: 1px solid var(--border);
+  padding: 10px 16px;
+  font-size: 14px;
+}
+
+.btn-export-pdf:hover:not(:disabled) {
+  background-color: var(--accent-bg);
+  color: var(--accent);
+  border-color: var(--accent-border);
+}
+
+.btn-export-pdf:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
 .spinner-sm {
   width: 14px;
   height: 14px;

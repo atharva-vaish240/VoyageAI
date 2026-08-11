@@ -4,6 +4,7 @@ import { tripsApi } from "../api/trips";
 import type { TripDetailResponse } from "../types/trip";
 import type { ItinerarySchema } from "../types/itinerary";
 import EditTripModal from "../components/trips/EditTripModal";
+import { generateTripItineraryPdf } from "../utils/pdfGenerator";
 import "./TripDetailsPage.css";
 
 export default function TripDetailsPage() {
@@ -20,6 +21,9 @@ export default function TripDetailsPage() {
 
   const [generatingItinerary, setGeneratingItinerary] = useState(false);
   const [itineraryError, setItineraryError] = useState<string | null>(null);
+
+  const [exportingPdf, setExportingPdf] = useState(false);
+  const [pdfError, setPdfError] = useState<string | null>(null);
 
   const [isEditOpen, setIsEditOpen] = useState(false);
   const [isDeleteConfirmOpen, setIsDeleteConfirmOpen] = useState(false);
@@ -97,6 +101,22 @@ export default function TripDetailsPage() {
     }
   };
 
+  const handleExportPdf = () => {
+    if (!trip || !itinerary) return;
+
+    setExportingPdf(true);
+    setPdfError(null);
+
+    try {
+      generateTripItineraryPdf(trip, itinerary);
+    } catch (err: unknown) {
+      console.error("PDF generation failed:", err);
+      setPdfError("Unable to export itinerary. Please try again.");
+    } finally {
+      setExportingPdf(false);
+    }
+  };
+
   const handleDeleteTrip = async () => {
     if (!trip) return;
     setDeleting(true);
@@ -165,7 +185,7 @@ export default function TripDetailsPage() {
   }
 
   return (
-    <div className="page-container trip-details-page">
+    <div className="page-container trip-details-page" data-testid="trip-details-page">
       <div className="back-nav">
         <Link to="/app/trips" className="back-link">
           ← Back to My Trips
@@ -218,27 +238,47 @@ export default function TripDetailsPage() {
             <p>Generate a customized day-by-day travel plan based on your preferences.</p>
           </div>
 
-          <button
-            type="button"
-            className="action-btn btn-ai"
-            onClick={handleGenerateItinerary}
-            disabled={generatingItinerary}
-          >
-            {generatingItinerary ? (
-              <>
-                <span className="spinner-sm" /> Generating Itinerary...
-              </>
-            ) : itinerary ? (
-              "✨ Regenerate Itinerary"
-            ) : (
-              "✨ Generate Itinerary"
+          <div className="itinerary-header-actions">
+            {itinerary && (
+              <button
+                type="button"
+                className="action-btn btn-export-pdf"
+                onClick={handleExportPdf}
+                disabled={exportingPdf || generatingItinerary}
+                data-testid="export-pdf-btn"
+              >
+                {exportingPdf ? "⏳ Exporting PDF..." : "📄 Export as PDF"}
+              </button>
             )}
-          </button>
+
+            <button
+              type="button"
+              className="action-btn btn-ai"
+              onClick={handleGenerateItinerary}
+              disabled={generatingItinerary || exportingPdf}
+            >
+              {generatingItinerary ? (
+                <>
+                  <span className="spinner-sm" /> Generating Itinerary...
+                </>
+              ) : itinerary ? (
+                "✨ Regenerate Itinerary"
+              ) : (
+                "✨ Generate Itinerary"
+              )}
+            </button>
+          </div>
         </div>
 
         {itineraryError && (
           <div className="trip-alert trip-alert-error" role="alert">
             <p>{itineraryError}</p>
+          </div>
+        )}
+
+        {pdfError && (
+          <div className="trip-alert trip-alert-error" role="alert" data-testid="pdf-error-banner">
+            <p>{pdfError}</p>
           </div>
         )}
 
