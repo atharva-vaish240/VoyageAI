@@ -1,4 +1,4 @@
-"""Trip CRUD endpoints."""
+"""Trip CRUD endpoints + AI itinerary generation."""
 
 from fastapi import APIRouter, Depends, HTTPException, Response
 from sqlalchemy.orm import Session
@@ -6,7 +6,9 @@ from sqlalchemy.orm import Session
 from app.api.deps import get_current_user
 from app.core.database import get_db
 from app.models.user import User
+from app.models.preference import UserPreference
 from app.schemas.trip import TripCreate, TripUpdate, TripResponse
+from app.schemas.itinerary import ItinerarySchema
 from app.services.trip_service import (
     TripError,
     create_trip,
@@ -15,6 +17,7 @@ from app.services.trip_service import (
     update_trip,
     delete_trip,
 )
+from app.services.ai_service import generate_itinerary, AIServiceError
 
 router = APIRouter(prefix="/trips", tags=["Trips"])
 
@@ -81,3 +84,44 @@ def delete_trip_route(
     except TripError as e:
         raise HTTPException(status_code=e.status_code, detail=e.detail)
     return Response(status_code=204)
+
+
+@router.post("/{trip_id}/generate-itinerary", response_model=ItinerarySchema)
+def generate_itinerary_route(
+    trip_id: int,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """Generate an AI-powered itinerary for the given trip using the user's preferences.
+
+    The trip must belong to the authenticated user.
+    """
+    # 1. Load the trip (enforces ownership — returns 404 if not found or wrong user)
+    try:
+        trip = get_user_trip(db, current_user.id, trip_id)
+    except TripError as e:
+        raise HTTPException(status_code=e.status_code, detail=e.detail)
+
+    if not trip.destination:
+        raise HTTPException(
+            status_code=400,
+            detail="Trip destination must be set before generating an itinerary.",
+        )
+
+    # 2. Load the user's preferences (may be None if never set; AI service handles defaults)
+    preferences = (
+        db.query(UserPreference)
+        .filter(UserPreference.user_id == current_user.id)
+        .first()
+    )
+
+    # 3. Call the AI service
+    try:
+        return generate_itinerary(
+            destination=trip.destination,
+            start_date=trip.start_date,
+            end_date=trip.end_date,
+            preferences=preferences,
+        )
+    except AIServiceError as e:
+        raise HTTPException(status_code=503, detail=str(e))

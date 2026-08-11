@@ -21,6 +21,7 @@ class Settings(BaseSettings):
 
     # Gemini
     GEMINI_API_KEY: str = ""
+    GEMINI_MODEL: str = "gemini-3.5-flash"
 
     # Google Cloud API
     GOOGLE_API_KEY: str = ""

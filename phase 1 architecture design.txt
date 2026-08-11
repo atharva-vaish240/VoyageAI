@@ -1,0 +1,192 @@
+phase 1 architecture design - 
+
+Give me a concise explanation of the Phase 1 authentication architecture.
+
+Explain:
+1. Signup flow
+2. Login flow
+3. Access-token validation
+4. Refresh-token rotation
+5. Logout/revocation
+6. get_current_user dependency
+7. require_role dependency
+8. Google OAuth flow
+9. Database relationships between User and RefreshToken
+---
+## 1. Signup Flow
+
+Client POST /api/v1/auth/signup  { name, email, password }
+  → auth.py route
+    → auth_service.signup()
+      → Check if email already exists → 409 if duplicate
+      → hash_password(password) via bcrypt
+      → Create User with role=USER (hardcoded, never from request)
+      → db.commit()
+    → Return UserResponse (no password_hash exposed)
+```
+
+**Key security decision**: `SignupRequest` schema has exactly 3 fields (`name`, `email`, `password`). Even if a client sends `"role": "ADMIN"`, Pydantic silently ignores unknown fields. The service always hardcodes `role=UserRole.USER`.
+
+---
+
+## 2. Login Flow
+
+```
+Client POST /api/v1/auth/login  { email, password }
+  → auth_service.login()
+    → Find user by email → generic "Invalid email or password" if not found
+    → verify_password(plain, hash) via bcrypt → same generic error if wrong
+    → Check user.is_active → 403 if deactivated
+    → create_access_token(user_id, role)  → short-lived JWT (15 min)
+    → create_refresh_token(user_id)       → longer-lived JWT (7 days)
+    → _store_refresh_token()              → SHA-256(refresh_jwt) stored in DB
+    → Return { access_token, refresh_token, token_type: "bearer" }
+```
+
+**Why generic errors**: The same message for "email not found" and "wrong password" prevents attackers from enumerating which emails are registered.
+
+---
+
+## 3. Access Token Validation
+
+The access JWT payload contains:
+
+```json
+{ "sub": "user_id", "role": "USER", "type": "access", "jti": "uuid4", "iat": ..., "exp": ... }
+```
+
+Validation happens in `get_current_user` (covered in #6). The critical check: `type == "access"`. This prevents a refresh token from being used as a Bearer token.
+
+The access token is **stateless** — it is not checked against the database. It's validated purely by signature + expiration. This is intentional: every request doesn't need a DB lookup for the token itself, only a user lookup to check `is_active`.
+
+---
+
+## 4. Refresh Token Rotation
+
+```
+Client POST /api/v1/auth/refresh  { refresh_token }
+  → auth_service.refresh_tokens()
+    → decode_token() → verify JWT signature + expiration
+    → Check type == "refresh"
+    → SHA-256(token) → look up in refresh_tokens table
+    → Check stored.revoked == False
+    → Check stored.expires_at > now
+    → REVOKE old token (stored.revoked = True, commit)
+    → Load user, check is_active
+    → Create NEW access token + NEW refresh token
+    → Store new refresh token hash in DB
+    → Return new token pair
+```
+
+**Why rotation**: The old refresh token is revoked immediately when used. If an attacker steals a refresh token but the legitimate user refreshes first, the attacker's stolen token is already revoked. This limits the compromise window to a single use.
+
+**Why `jti` (JWT ID)**: Each token includes `uuid4().hex`, ensuring that even two tokens issued in the same second for the same user produce different JWTs (and therefore different SHA-256 hashes). Without this, rapid token creation caused duplicate hash collisions in the DB.
+
+---
+
+## 5. Logout / Revocation
+
+```
+Client POST /api/v1/auth/logout  { refresh_token }
+  → auth_service.logout()
+    → SHA-256(token) → find in DB
+    → Set revoked = True, commit
+    → Return success (idempotent — works even if already revoked/missing)
+```
+
+After logout, the refresh token can never be used again. The access token technically remains valid until it expires (15 minutes), which is the standard tradeoff of stateless JWTs. A full "immediate invalidation" would require a token blacklist, which we deliberately avoid for simplicity.
+
+---
+
+## 6. `get_current_user` Dependency
+
+Defined in [app/api/deps.py](file:///home/vaish007/coding/projects/VoyageAI/backend/app/api/deps.py):
+
+```
+Authorization: Bearer <token>
+  → HTTPBearer extracts the token string
+  → decode_token() verifies JWT signature + expiration
+  → Check payload.type == "access" (rejects refresh tokens)
+  → Extract user_id from payload.sub
+  → DB lookup: User.id == user_id
+  → Check user.is_active → 403 if deactivated
+  → Return User ORM object
+```
+
+This is a standard FastAPI `Depends()` — any route that declares `current_user: User = Depends(get_current_user)` gets automatic authentication. If any step fails, the appropriate `HTTPException` (401 or 403) is raised before the route handler runs.
+
+---
+
+## 7. `require_role` Dependency
+
+```python
+require_role(UserRole.ADMIN)  →  returns a dependency function
+```
+
+It's a **dependency factory** — calling `require_role(UserRole.ADMIN)` returns a new inner function that:
+
+1. Depends on `get_current_user` (so authentication runs first)
+2. Checks `current_user.role in roles`
+3. Raises 403 "Insufficient permissions" if the role doesn't match
+4. Returns the user if authorized
+
+Usage:
+
+```python
+@router.get("/admin/test", dependencies=[Depends(require_role(UserRole.ADMIN))])
+```
+
+The dependency chain is: `HTTPBearer → decode JWT → load user → check role`. Each layer can reject independently. This is reusable for any future admin endpoint.
+
+---
+
+## 8. Google OAuth Flow
+
+```
+1. GET /api/v1/oauth/google/login
+   → Backend builds Google consent URL with client_id, redirect_uri, scopes
+   → Returns RedirectResponse to Google
+
+2. User authenticates on Google's consent screen
+
+3. Google redirects to: GET /api/v1/oauth/google/callback?code=AUTH_CODE
+   → Backend exchanges code for Google access token (POST to Google token endpoint)
+   → Backend fetches user info from Google (GET to userinfo endpoint)
+   → auth_service.google_oauth_login():
+     → Find user by email
+     → If no user exists → create with auth_provider="google", password_hash=None
+     → If user exists (even from local signup) → reuse the account (linking)
+     → Issue our access + refresh tokens
+   → Return TokenResponse
+```
+
+**Key design decisions**:
+- **Backend handles everything**: Google client secret never reaches the frontend
+- **Account linking by email**: A user who signed up with email/password and later clicks "Login with Google" gets the same account — no duplicates
+- **password_hash is nullable**: OAuth-only users have `password_hash=None`, so they can't log in via the email/password endpoint (the `not user.password_hash` check in `login()` rejects them)
+
+---
+
+## 9. Database Relationships
+
+```
+┌──────────────┐       1 : N       ┌──────────────────┐
+│    users     │──────────────────→│  refresh_tokens   │
+├──────────────┤                   ├──────────────────┤
+│ id (PK)      │                   │ id (PK)          │
+│ name         │                   │ token_hash (UQ)  │  ← SHA-256, never raw JWT
+│ email (UQ)   │                   │ user_id (FK)     │  → users.id, ON DELETE CASCADE
+│ password_hash│                   │ expires_at       │
+│ role (ENUM)  │                   │ revoked (BOOL)   │
+│ is_active    │                   │ created_at       │
+│ auth_provider│                   └──────────────────┘
+│ created_at   │
+│ updated_at   │
+└──────────────┘
+```
+
+- **One-to-many**: A user can have multiple refresh tokens (one per login session, plus historical revoked ones)
+- **CASCADE delete**: If a user is deleted, all their refresh tokens are automatically removed
+- **SQLAlchemy relationship**: `User.refresh_tokens` and `RefreshToken.user` provide bidirectional navigation
+- **Composite index** `ix_refresh_tokens_user_revoked` on `(user_id, revoked)` optimizes the common query pattern of finding a user's active tokens
+- **token_hash**: The raw JWT is never stored — only its SHA-256 digest. Even if the DB is compromised, tokens can't be replayed
