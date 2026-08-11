@@ -1,4 +1,4 @@
-"""Trip CRUD endpoints + AI itinerary generation."""
+"""Trip CRUD endpoints + AI itinerary generation + Google Calendar scheduling."""
 
 from fastapi import APIRouter, Depends, HTTPException, Response
 from sqlalchemy.orm import Session
@@ -9,6 +9,7 @@ from app.models.user import User
 from app.models.preference import UserPreference
 from app.schemas.trip import TripCreate, TripUpdate, TripResponse, TripDetailResponse
 from app.schemas.itinerary import ItinerarySchema
+from app.schemas.calendar import TripCalendarResponse
 from app.services.trip_service import (
     TripError,
     create_trip,
@@ -18,6 +19,10 @@ from app.services.trip_service import (
     delete_trip,
 )
 from app.services.ai_service import generate_itinerary, AIServiceError
+from app.services.google_calendar_service import (
+    GoogleCalendarError,
+    schedule_trip_itinerary_to_calendar,
+)
 
 router = APIRouter(prefix="/trips", tags=["Trips"])
 
@@ -96,7 +101,6 @@ def generate_itinerary_route(
 
     The trip must belong to the authenticated user.
     """
-    # 1. Load the trip (enforces ownership — returns 404 if not found or wrong user)
     try:
         trip = get_user_trip(db, current_user.id, trip_id)
     except TripError as e:
@@ -108,14 +112,12 @@ def generate_itinerary_route(
             detail="Trip destination must be set before generating an itinerary.",
         )
 
-    # 2. Load the user's preferences (may be None if never set; AI service handles defaults)
     preferences = (
         db.query(UserPreference)
         .filter(UserPreference.user_id == current_user.id)
         .first()
     )
 
-    # 3. Call the AI service & persist generated itinerary to DB
     try:
         itinerary = generate_itinerary(
             destination=trip.destination,
@@ -131,3 +133,25 @@ def generate_itinerary_route(
         return itinerary
     except AIServiceError as e:
         raise HTTPException(status_code=503, detail=str(e))
+
+
+@router.post("/{trip_id}/calendar", response_model=TripCalendarResponse)
+def schedule_trip_calendar_route(
+    trip_id: int,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """Schedule the itinerary of a user's trip into their primary Google Calendar.
+
+    Enforces trip ownership (returns 404 if not found/unauthorized).
+    Requires a valid connected Google Calendar for the user.
+    """
+    try:
+        trip = get_user_trip(db, current_user.id, trip_id)
+    except TripError as e:
+        raise HTTPException(status_code=e.status_code, detail=e.detail)
+
+    try:
+        return schedule_trip_itinerary_to_calendar(db, current_user.id, trip)
+    except GoogleCalendarError as e:
+        raise HTTPException(status_code=e.status_code, detail=e.detail)

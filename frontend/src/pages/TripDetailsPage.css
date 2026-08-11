@@ -142,6 +142,7 @@
   display: flex;
   gap: 10px;
   align-items: center;
+  flex-wrap: wrap;
 }
 
 .btn-export-pdf {
@@ -161,6 +162,91 @@
 .btn-export-pdf:disabled {
   opacity: 0.6;
   cursor: not-allowed;
+}
+
+/* Google Calendar Action Buttons */
+.btn-gcal {
+  background-color: #4285f4;
+  color: #ffffff;
+  border: 1px solid #3367d6;
+  padding: 10px 16px;
+  font-size: 14px;
+}
+
+.btn-gcal:hover:not(:disabled) {
+  background-color: #3367d6;
+}
+
+.btn-gcal:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.btn-gcal-success {
+  background-color: #10b981;
+  color: #ffffff;
+  border-color: #059669;
+}
+
+/* Google Calendar Result Banner */
+.gcal-result-banner {
+  padding: 16px 20px;
+  border-radius: 10px;
+  margin-bottom: 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.gcal-result-success {
+  background-color: rgba(16, 185, 129, 0.1);
+  border: 1px solid rgba(16, 185, 129, 0.3);
+  color: #065f46;
+}
+
+.gcal-result-synced {
+  background-color: rgba(59, 130, 246, 0.1);
+  border: 1px solid rgba(59, 130, 246, 0.3);
+  color: #1e40af;
+}
+
+.gcal-result-warning {
+  background-color: rgba(245, 158, 11, 0.1);
+  border: 1px solid rgba(245, 158, 11, 0.3);
+  color: #92400e;
+}
+
+.gcal-result-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.gcal-result-title {
+  font-weight: 700;
+  font-size: 15px;
+  margin: 0;
+}
+
+.gcal-link-btn {
+  background: transparent;
+  color: inherit;
+  border: 1px solid currentColor;
+  padding: 6px 12px;
+  border-radius: 6px;
+  font-weight: 600;
+  font-size: 13px;
+  text-decoration: none;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  cursor: pointer;
+}
+
+.gcal-link-btn:hover {
+  opacity: 0.8;
 }
 
 .spinner-sm {

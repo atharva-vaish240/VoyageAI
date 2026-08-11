@@ -1,53 +1,89 @@
-import { useEffect, useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { useEffect, useState, useRef } from "react";
+import { useNavigate, useSearchParams } from "react-router-dom";
 import { useAuth } from "../hooks/useAuth";
+import { postCalendarCallback } from "../api/calendar";
 
 /**
- * Handles the Google OAuth callback.
- *
- * The backend redirects here with tokens in the URL fragment:
- *   /auth/google/callback#access_token=...&refresh_token=...
- *
- * URL fragments are never sent to the server, providing security.
+ * Handles Google OAuth callbacks:
+ * 1. User login callback (tokens in URL hash: #access_token=...&refresh_token=...)
+ * 2. Google Calendar authorization callback (code in URL query string: ?code=...)
  */
 export default function OAuthCallbackPage() {
   const { handleOAuthTokens } = useAuth();
   const navigate = useNavigate();
-  const [error, setError] = useState("");
+  const [searchParams] = useSearchParams();
+
+  const code = searchParams.get("code");
+  const hash = window.location.hash.substring(1); // remove #
+  const hashParams = new URLSearchParams(hash);
+  const accessToken = hashParams.get("access_token");
+  const refreshToken = hashParams.get("refresh_token");
+
+  const [error, setError] = useState(() => {
+    if (!code && (!accessToken || !refreshToken)) {
+      return "Invalid authorization callback. No code or credentials received.";
+    }
+    return "";
+  });
+
+  const processed = useRef(false);
+
+  const message = code
+    ? "Connecting Google Calendar..."
+    : accessToken
+    ? "Completing Google login..."
+    : "Processing authorization...";
 
   useEffect(() => {
-    const processCallback = async () => {
-      const hash = window.location.hash.substring(1); // remove #
-      const params = new URLSearchParams(hash);
-      const accessToken = params.get("access_token");
-      const refreshToken = params.get("refresh_token");
+    if (processed.current) return;
+    processed.current = true;
 
-      if (accessToken && refreshToken) {
-        // Clear the fragment from the URL (don't leave tokens visible)
-        window.history.replaceState(null, "", window.location.pathname);
+    // Case A: Google Calendar OAuth Code Flow
+    if (code) {
+      postCalendarCallback(code)
+        .then(() => {
+          const pendingTripId = sessionStorage.getItem("gcal_pending_trip_id");
+          sessionStorage.removeItem("gcal_pending_trip_id");
 
-        try {
-          await handleOAuthTokens(accessToken, refreshToken);
+          if (pendingTripId) {
+            sessionStorage.setItem("gcal_auto_schedule", pendingTripId);
+            navigate(`/app/trips/${pendingTripId}`, { replace: true });
+          } else {
+            navigate("/app/trips", { replace: true });
+          }
+        })
+        .catch((err) => {
+          console.error("Calendar callback error:", err);
+          setError("Failed to connect Google Calendar. Please try again.");
+        });
+      return;
+    }
+
+    // Case B: Google User Login Token Flow
+    if (accessToken && refreshToken) {
+      window.history.replaceState(null, "", window.location.pathname);
+
+      handleOAuthTokens(accessToken, refreshToken)
+        .then(() => {
           navigate("/app", { replace: true });
-        } catch {
+        })
+        .catch(() => {
           setError("Failed to complete Google login.");
-        }
-      } else {
-        setError("Google login failed. No tokens received.");
-      }
-    };
-
-    processCallback();
-  }, [handleOAuthTokens, navigate]);
+        });
+    }
+  }, [code, accessToken, refreshToken, handleOAuthTokens, navigate]);
 
   if (error) {
     return (
       <div className="auth-page">
         <div className="auth-card">
-          <h1 className="auth-title">Login Failed</h1>
+          <h1 className="auth-title">Authorization Failed</h1>
           <p>{error}</p>
-          <a href="/login" style={{ color: "var(--accent)", marginTop: 16, display: "inline-block" }}>
-            Back to login
+          <a
+            href="/app/trips"
+            style={{ color: "var(--accent)", marginTop: 16, display: "inline-block" }}
+          >
+            Back to My Trips
           </a>
         </div>
       </div>
@@ -57,7 +93,7 @@ export default function OAuthCallbackPage() {
   return (
     <div className="auth-page">
       <div className="auth-card" style={{ textAlign: "center" }}>
-        <p>Completing Google login...</p>
+        <p>{message}</p>
       </div>
     </div>
   );

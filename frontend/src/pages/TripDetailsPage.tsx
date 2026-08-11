@@ -1,8 +1,14 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { useParams, useNavigate, Link } from "react-router-dom";
 import { tripsApi } from "../api/trips";
+import {
+  getCalendarStatus,
+  getCalendarAuthUrl,
+  scheduleTripToCalendar,
+} from "../api/calendar";
 import type { TripDetailResponse } from "../types/trip";
 import type { ItinerarySchema } from "../types/itinerary";
+import type { TripCalendarResponse } from "../types/calendar";
 import EditTripModal from "../components/trips/EditTripModal";
 import { generateTripItineraryPdf } from "../utils/pdfGenerator";
 import "./TripDetailsPage.css";
@@ -25,13 +31,45 @@ export default function TripDetailsPage() {
   const [exportingPdf, setExportingPdf] = useState(false);
   const [pdfError, setPdfError] = useState<string | null>(null);
 
+  // Google Calendar Integration State
+  const [calendarConnected, setCalendarConnected] = useState<boolean | null>(null);
+  const [schedulingCalendar, setSchedulingCalendar] = useState(false);
+  const [calendarResult, setCalendarResult] = useState<TripCalendarResponse | null>(null);
+  const [calendarError, setCalendarError] = useState<string | null>(null);
+
   const [isEditOpen, setIsEditOpen] = useState(false);
   const [isDeleteConfirmOpen, setIsDeleteConfirmOpen] = useState(false);
   const [deleting, setDeleting] = useState(false);
 
+  // One-click calendar scheduling function
+  const handleScheduleCalendar = useCallback(async (targetTripId: number) => {
+    setSchedulingCalendar(true);
+    setCalendarError(null);
+
+    try {
+      const res = await scheduleTripToCalendar(targetTripId);
+      setCalendarResult(res);
+      setCalendarConnected(true);
+    } catch (err: unknown) {
+      const axiosErr = err as { response?: { status?: number; data?: { detail?: string } } };
+      const detail = axiosErr?.response?.data?.detail || "";
+
+      if (axiosErr?.response?.status === 400 && detail.toLowerCase().includes("not connected")) {
+        setCalendarConnected(false);
+        setCalendarError("Google Calendar is not connected. Connecting now...");
+      } else {
+        setCalendarError(detail || "Failed to schedule trip into Google Calendar. Please try again.");
+      }
+    } finally {
+      setSchedulingCalendar(false);
+    }
+  }, []);
+
+  // Fetch trip details, calendar status & handle auto-scheduling post-OAuth
   useEffect(() => {
     let isMounted = true;
-    const fetchTripDetails = async () => {
+
+    const fetchTripDetailsAndStatus = async () => {
       if (isNaN(numericTripId)) {
         if (isMounted) {
           setTripError("Invalid trip ID.");
@@ -40,9 +78,19 @@ export default function TripDetailsPage() {
         return;
       }
 
+      setLoadingTrip(true);
+      setTripError(null);
+
+      // Async fetch calendar status
+      getCalendarStatus()
+        .then((res) => {
+          if (isMounted) setCalendarConnected(res.connected);
+        })
+        .catch(() => {
+          if (isMounted) setCalendarConnected(false);
+        });
+
       try {
-        setLoadingTrip(true);
-        setTripError(null);
         const { data } = await tripsApi.getTrip(numericTripId);
         if (isMounted) {
           setTrip(data);
@@ -67,14 +115,46 @@ export default function TripDetailsPage() {
           setLoadingTrip(false);
         }
       }
+
+      // Auto-schedule if returning from Google OAuth callback
+      const autoScheduleTripId = sessionStorage.getItem("gcal_auto_schedule");
+      if (autoScheduleTripId && parseInt(autoScheduleTripId, 10) === numericTripId) {
+        sessionStorage.removeItem("gcal_auto_schedule");
+        handleScheduleCalendar(numericTripId);
+      }
     };
 
-    fetchTripDetails();
+    fetchTripDetailsAndStatus();
 
     return () => {
       isMounted = false;
     };
-  }, [numericTripId]);
+  }, [numericTripId, handleScheduleCalendar]);
+
+  // OAuth initiation
+  const handleConnectCalendar = async () => {
+    try {
+      setSchedulingCalendar(true);
+      setCalendarError(null);
+      if (!isNaN(numericTripId)) {
+        sessionStorage.setItem("gcal_pending_trip_id", String(numericTripId));
+      }
+      const data = await getCalendarAuthUrl();
+      window.location.href = data.auth_url;
+    } catch {
+      setCalendarError("Unable to connect Google Calendar right now. Please try again.");
+      setSchedulingCalendar(false);
+    }
+  };
+
+  // Entry point for "Add to Google Calendar" button click
+  const handleAddCalendarClick = () => {
+    if (calendarConnected === false) {
+      handleConnectCalendar();
+    } else {
+      handleScheduleCalendar(numericTripId);
+    }
+  };
 
   const handleGenerateItinerary = async () => {
     if (!trip) return;
@@ -156,6 +236,25 @@ export default function TripDetailsPage() {
     } catch {
       return dateStr;
     }
+  };
+
+  // Determine Google Calendar button label
+  const getCalendarButtonText = () => {
+    if (schedulingCalendar) {
+      return "⏳ Adding to Google Calendar...";
+    }
+    if (calendarResult) {
+      if (calendarResult.created > 0 && calendarResult.failed === 0) {
+        return "✓ Added to Google Calendar";
+      }
+      if (calendarResult.created === 0 && calendarResult.already_exists > 0 && calendarResult.failed === 0) {
+        return "✓ Already in Google Calendar";
+      }
+      if (calendarResult.failed > 0) {
+        return "🔄 Retry Calendar Sync";
+      }
+    }
+    return "📅 Add to Google Calendar";
   };
 
   if (loadingTrip) {
@@ -240,22 +339,36 @@ export default function TripDetailsPage() {
 
           <div className="itinerary-header-actions">
             {itinerary && (
-              <button
-                type="button"
-                className="action-btn btn-export-pdf"
-                onClick={handleExportPdf}
-                disabled={exportingPdf || generatingItinerary}
-                data-testid="export-pdf-btn"
-              >
-                {exportingPdf ? "⏳ Exporting PDF..." : "📄 Export as PDF"}
-              </button>
+              <>
+                <button
+                  type="button"
+                  className={`action-btn btn-gcal ${
+                    calendarResult?.created && calendarResult.created > 0 ? "btn-gcal-success" : ""
+                  }`}
+                  onClick={handleAddCalendarClick}
+                  disabled={schedulingCalendar || generatingItinerary || exportingPdf}
+                  data-testid="add-google-calendar-btn"
+                >
+                  {getCalendarButtonText()}
+                </button>
+
+                <button
+                  type="button"
+                  className="action-btn btn-export-pdf"
+                  onClick={handleExportPdf}
+                  disabled={exportingPdf || generatingItinerary || schedulingCalendar}
+                  data-testid="export-pdf-btn"
+                >
+                  {exportingPdf ? "⏳ Exporting PDF..." : "📄 Export as PDF"}
+                </button>
+              </>
             )}
 
             <button
               type="button"
               className="action-btn btn-ai"
               onClick={handleGenerateItinerary}
-              disabled={generatingItinerary || exportingPdf}
+              disabled={generatingItinerary || exportingPdf || schedulingCalendar}
             >
               {generatingItinerary ? (
                 <>
@@ -279,6 +392,63 @@ export default function TripDetailsPage() {
         {pdfError && (
           <div className="trip-alert trip-alert-error" role="alert" data-testid="pdf-error-banner">
             <p>{pdfError}</p>
+          </div>
+        )}
+
+        {/* Google Calendar Feedback Banners */}
+        {calendarError && (
+          <div className="trip-alert trip-alert-error" role="alert" data-testid="calendar-error-banner">
+            <p>{calendarError}</p>
+          </div>
+        )}
+
+        {calendarResult && (
+          <div
+            className={`gcal-result-banner ${
+              calendarResult.failed > 0
+                ? "gcal-result-warning"
+                : calendarResult.created > 0
+                ? "gcal-result-success"
+                : "gcal-result-synced"
+            }`}
+            data-testid="calendar-result-banner"
+          >
+            <div className="gcal-result-header">
+              <h4 className="gcal-result-title">
+                {calendarResult.failed > 0
+                  ? "⚠️ Trip Partially Added to Google Calendar"
+                  : calendarResult.created > 0
+                  ? "✅ Trip Added to Google Calendar"
+                  : "✓ Trip Already Synced with Google Calendar"}
+              </h4>
+              {calendarResult.calendar_url && (
+                <a
+                  href={calendarResult.calendar_url}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="gcal-link-btn"
+                  data-testid="open-google-calendar-link"
+                >
+                  Open Google Calendar ↗
+                </a>
+              )}
+            </div>
+
+            <p style={{ margin: 0, fontSize: "14px" }}>
+              {calendarResult.created > 0 && `${calendarResult.created} activities added to your calendar. `}
+              {calendarResult.already_exists > 0 && `${calendarResult.already_exists} activities were already scheduled. `}
+              {calendarResult.failed > 0 && `${calendarResult.failed} activities could not be added.`}
+            </p>
+
+            {calendarResult.failed_activities && calendarResult.failed_activities.length > 0 && (
+              <ul style={{ margin: "6px 0 0 0", paddingLeft: "20px", fontSize: "13px" }}>
+                {calendarResult.failed_activities.map((f, idx) => (
+                  <li key={idx}>
+                    {f.title} ({f.day}): {f.error}
+                  </li>
+                ))}
+              </ul>
+            )}
           </div>
         )}
 

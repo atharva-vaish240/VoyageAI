@@ -1,9 +1,11 @@
 """Password hashing and JWT token utilities."""
 
+import base64
 import hashlib
 import uuid
 from datetime import datetime, timedelta, timezone
 
+from cryptography.fernet import Fernet
 from passlib.context import CryptContext
 from jose import jwt, JWTError
 
@@ -64,3 +66,29 @@ def decode_token(token: str) -> dict:
 def hash_token(token: str) -> str:
     """SHA-256 hash of a token string for safe database storage."""
     return hashlib.sha256(token.encode()).hexdigest()
+
+
+# ── Token Encryption / Decryption ──────────────────────────────
+
+
+def _get_fernet() -> Fernet:
+    settings = get_settings()
+    key_bytes = hashlib.sha256(settings.JWT_SECRET_KEY.encode()).digest()
+    fernet_key = base64.urlsafe_b64encode(key_bytes)
+    return Fernet(fernet_key)
+
+
+def encrypt_token(plain_token: str | None) -> str | None:
+    """Encrypt a raw token string before persisting to DB."""
+    if not plain_token:
+        return None
+    f = _get_fernet()
+    return f.encrypt(plain_token.encode("utf-8")).decode("utf-8")
+
+
+def decrypt_token(encrypted_token: str | None) -> str | None:
+    """Decrypt an encrypted token string retrieved from DB."""
+    if not encrypted_token:
+        return None
+    f = _get_fernet()
+    return f.decrypt(encrypted_token.encode("utf-8")).decode("utf-8")

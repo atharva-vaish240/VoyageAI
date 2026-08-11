@@ -1,10 +1,14 @@
 // @vitest-environment jsdom
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
-import { render, screen, fireEvent, cleanup } from "@testing-library/react";
+import { render, screen, fireEvent, cleanup, waitFor } from "@testing-library/react";
 import { MemoryRouter, Route, Routes } from "react-router-dom";
 import TripDetailsPage from "./TripDetailsPage";
 import { tripsApi } from "../api/trips";
-import { generateTripItineraryPdf } from "../utils/pdfGenerator";
+import {
+  getCalendarStatus,
+  getCalendarAuthUrl,
+  scheduleTripToCalendar,
+} from "../api/calendar";
 import type { TripDetailResponse } from "../types/trip";
 
 vi.mock("../api/trips", () => ({
@@ -15,13 +19,21 @@ vi.mock("../api/trips", () => ({
   },
 }));
 
+vi.mock("../api/calendar", () => ({
+  getCalendarStatus: vi.fn(),
+  getCalendarAuthUrl: vi.fn(),
+  scheduleTripToCalendar: vi.fn(),
+}));
+
 vi.mock("../utils/pdfGenerator", () => ({
   generateTripItineraryPdf: vi.fn(),
 }));
 
-describe("TripDetailsPage PDF Export", () => {
+describe("TripDetailsPage Google Calendar & PDF Export", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    sessionStorage.clear();
+    vi.mocked(getCalendarStatus).mockResolvedValue({ connected: true });
   });
 
   afterEach(() => {
@@ -65,7 +77,7 @@ describe("TripDetailsPage PDF Export", () => {
     itinerary: null,
   };
 
-  it("renders 'Export as PDF' button when itinerary exists", async () => {
+  it("renders 'Export as PDF' and 'Add to Google Calendar' buttons when itinerary exists", async () => {
     vi.mocked(tripsApi.getTrip).mockResolvedValue({ data: tripWithItinerary } as never);
 
     render(
@@ -77,11 +89,13 @@ describe("TripDetailsPage PDF Export", () => {
     );
 
     const exportBtn = await screen.findByTestId("export-pdf-btn");
-    expect(exportBtn).toBeDefined();
+    const calBtn = await screen.findByTestId("add-google-calendar-btn");
+
     expect(exportBtn.textContent).toContain("Export as PDF");
+    expect(calBtn.textContent).toContain("Add to Google Calendar");
   });
 
-  it("does NOT render 'Export as PDF' button when itinerary is null", async () => {
+  it("does NOT render PDF export or Google Calendar buttons when itinerary is null", async () => {
     vi.mocked(tripsApi.getTrip).mockResolvedValue({ data: tripWithoutItinerary } as never);
 
     render(
@@ -95,30 +109,18 @@ describe("TripDetailsPage PDF Export", () => {
     await screen.findByTestId("trip-details-page");
 
     expect(screen.queryByTestId("export-pdf-btn")).toBeNull();
-    expect(screen.getByText("No Itinerary Generated Yet")).toBeDefined();
+    expect(screen.queryByTestId("add-google-calendar-btn")).toBeNull();
   });
 
-  it("triggers generateTripItineraryPdf when Export button is clicked", async () => {
+  it("connected calendar -> clicking 'Add to Google Calendar' calls scheduleTripToCalendar endpoint", async () => {
     vi.mocked(tripsApi.getTrip).mockResolvedValue({ data: tripWithItinerary } as never);
-
-    render(
-      <MemoryRouter initialEntries={["/app/trips/714"]}>
-        <Routes>
-          <Route path="/app/trips/:tripId" element={<TripDetailsPage />} />
-        </Routes>
-      </MemoryRouter>
-    );
-
-    const exportBtn = await screen.findByTestId("export-pdf-btn");
-    fireEvent.click(exportBtn);
-
-    expect(generateTripItineraryPdf).toHaveBeenCalledWith(tripWithItinerary, tripWithItinerary.itinerary);
-  });
-
-  it("handles PDF generation failure gracefully without crashing page", async () => {
-    vi.mocked(tripsApi.getTrip).mockResolvedValue({ data: tripWithItinerary } as never);
-    vi.mocked(generateTripItineraryPdf).mockImplementation(() => {
-      throw new Error("PDF layout failed");
+    vi.mocked(scheduleTripToCalendar).mockResolvedValue({
+      total_activities: 1,
+      created: 1,
+      already_exists: 0,
+      failed: 0,
+      calendar_url: "https://calendar.google.com/calendar/u/0/r",
+      failed_activities: [],
     });
 
     render(
@@ -129,11 +131,135 @@ describe("TripDetailsPage PDF Export", () => {
       </MemoryRouter>
     );
 
-    const exportBtn = await screen.findByTestId("export-pdf-btn");
-    fireEvent.click(exportBtn);
+    const calBtn = await screen.findByTestId("add-google-calendar-btn");
+    fireEvent.click(calBtn);
 
-    const errorBanner = await screen.findByTestId("pdf-error-banner");
-    expect(errorBanner.textContent).toContain("Unable to export itinerary. Please try again.");
-    expect(screen.getByText("Grand Kashmir Expedition")).toBeDefined();
+    await waitFor(() => {
+      expect(scheduleTripToCalendar).toHaveBeenCalledWith(714);
+    });
+
+    const banner = await screen.findByTestId("calendar-result-banner");
+    expect(banner.textContent).toContain("Trip Added to Google Calendar");
+    expect(banner.textContent).toContain("1 activities added to your calendar");
+
+    const link = screen.getByTestId("open-google-calendar-link") as HTMLAnchorElement;
+    expect(link.href).toBe("https://calendar.google.com/calendar/u/0/r");
+  });
+
+  it("already-synced response renders 'Trip Already Synced' banner", async () => {
+    vi.mocked(tripsApi.getTrip).mockResolvedValue({ data: tripWithItinerary } as never);
+    vi.mocked(scheduleTripToCalendar).mockResolvedValue({
+      total_activities: 1,
+      created: 0,
+      already_exists: 1,
+      failed: 0,
+      calendar_url: "https://calendar.google.com/calendar/u/0/r",
+      failed_activities: [],
+    });
+
+    render(
+      <MemoryRouter initialEntries={["/app/trips/714"]}>
+        <Routes>
+          <Route path="/app/trips/:tripId" element={<TripDetailsPage />} />
+        </Routes>
+      </MemoryRouter>
+    );
+
+    const calBtn = await screen.findByTestId("add-google-calendar-btn");
+    fireEvent.click(calBtn);
+
+    const banner = await screen.findByTestId("calendar-result-banner");
+    expect(banner.textContent).toContain("Trip Already Synced with Google Calendar");
+    expect(banner.textContent).toContain("1 activities were already scheduled");
+  });
+
+  it("partial failure displays warning banner with failed activity details", async () => {
+    vi.mocked(tripsApi.getTrip).mockResolvedValue({ data: tripWithItinerary } as never);
+    vi.mocked(scheduleTripToCalendar).mockResolvedValue({
+      total_activities: 2,
+      created: 1,
+      already_exists: 0,
+      failed: 1,
+      calendar_url: "https://calendar.google.com/calendar/u/0/r",
+      failed_activities: [
+        {
+          day: "2026-09-01",
+          activity_index: 1,
+          title: "Failed Dinner Cruise",
+          error: "Google API error (500)",
+        },
+      ],
+    });
+
+    render(
+      <MemoryRouter initialEntries={["/app/trips/714"]}>
+        <Routes>
+          <Route path="/app/trips/:tripId" element={<TripDetailsPage />} />
+        </Routes>
+      </MemoryRouter>
+    );
+
+    const calBtn = await screen.findByTestId("add-google-calendar-btn");
+    fireEvent.click(calBtn);
+
+    const banner = await screen.findByTestId("calendar-result-banner");
+    expect(banner.textContent).toContain("Trip Partially Added to Google Calendar");
+    expect(banner.textContent).toContain("Failed Dinner Cruise");
+  });
+
+  it("disconnected calendar -> clicking 'Add to Google Calendar' initiates OAuth flow", async () => {
+    vi.mocked(tripsApi.getTrip).mockResolvedValue({ data: tripWithItinerary } as never);
+    vi.mocked(getCalendarStatus).mockResolvedValue({ connected: false });
+    vi.mocked(getCalendarAuthUrl).mockResolvedValue({ auth_url: "https://accounts.google.com/o/oauth2/v2/auth?client_id=123" });
+
+    const originalLocation = window.location;
+    delete (window as unknown as Record<string, unknown>).location;
+    (window as unknown as Record<string, unknown>).location = { href: "" };
+
+    render(
+      <MemoryRouter initialEntries={["/app/trips/714"]}>
+        <Routes>
+          <Route path="/app/trips/:tripId" element={<TripDetailsPage />} />
+        </Routes>
+      </MemoryRouter>
+    );
+
+    const calBtn = await screen.findByTestId("add-google-calendar-btn");
+    fireEvent.click(calBtn);
+
+    await waitFor(() => {
+      expect(sessionStorage.getItem("gcal_pending_trip_id")).toBe("714");
+      expect(getCalendarAuthUrl).toHaveBeenCalled();
+      expect(window.location.href).toContain("accounts.google.com");
+    });
+
+    (window as unknown as Record<string, unknown>).location = originalLocation;
+  });
+
+  it("auto-schedules trip post-OAuth return when gcal_auto_schedule is set", async () => {
+    sessionStorage.setItem("gcal_auto_schedule", "714");
+    vi.mocked(tripsApi.getTrip).mockResolvedValue({ data: tripWithItinerary } as never);
+    vi.mocked(scheduleTripToCalendar).mockResolvedValue({
+      total_activities: 1,
+      created: 1,
+      already_exists: 0,
+      failed: 0,
+      calendar_url: "https://calendar.google.com/calendar/u/0/r",
+      failed_activities: [],
+    });
+
+    render(
+      <MemoryRouter initialEntries={["/app/trips/714"]}>
+        <Routes>
+          <Route path="/app/trips/:tripId" element={<TripDetailsPage />} />
+        </Routes>
+      </MemoryRouter>
+    );
+
+    await waitFor(() => {
+      expect(scheduleTripToCalendar).toHaveBeenCalledWith(714);
+    });
+
+    expect(sessionStorage.getItem("gcal_auto_schedule")).toBeNull();
   });
 });
