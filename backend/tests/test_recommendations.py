@@ -47,6 +47,7 @@ def _mock_recommendations() -> RecommendationsResponse:
             tagline="Autumn leaves & historic temples",
             reason="Peak fall foliage weather with comfortable temperatures.",
             highlights=["Kiyomizu-dera", "Arashiyama Bamboo Grove", "Fushimi Inari"],
+            image_search_term="Fushimi Inari Kyoto",
         ),
         hidden_gem=RecommendationItem(
             category="Hidden Gem",
@@ -54,6 +55,7 @@ def _mock_recommendations() -> RecommendationsResponse:
             tagline="Pristine alpine beauty & river streams",
             reason="Peaceful mountain retreat away from tourist crowds.",
             highlights=["Great Himalayan National Park", "Jibhi Waterfalls", "Serolsar Lake"],
+            image_search_term="Tirthan Valley river",
         ),
         experience_pick=RecommendationItem(
             category="Experience Pick",
@@ -61,6 +63,7 @@ def _mock_recommendations() -> RecommendationsResponse:
             tagline="Ganges rafting & spiritual retreats",
             reason="Ideal blend of high-energy adventure and serene evening rituals.",
             highlights=["White Water Rafting", "Triveni Ghat Aarti", "Beatles Ashram"],
+            image_search_term="Rishikesh Ganges river",
         ),
     )
 

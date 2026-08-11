@@ -1,7 +1,15 @@
 """Pydantic schemas for destination recommendations."""
 
-from typing import List
+from typing import List, Optional
 from pydantic import BaseModel, Field
+
+
+class RecommendationImage(BaseModel):
+    """Attribution and source URLs for a Pexels photo."""
+    url: str = Field(..., description="Image display URL")
+    photographer: str = Field(..., description="Name of photographer")
+    photographer_url: str = Field(..., description="Link to photographer's Pexels profile")
+    pexels_url: str = Field(..., description="Link to original photo on Pexels")
 
 
 class RecommendationItem(BaseModel):
@@ -11,6 +19,8 @@ class RecommendationItem(BaseModel):
     tagline: str = Field(..., description="Catchy short tagline")
     reason: str = Field(..., description="Concise reason for recommendation based on season & preferences")
     highlights: List[str] = Field(..., description="Top 2-3 key highlights or activities")
+    image_search_term: str = Field(default="", description="Recognizable landmark or spot for image search (e.g. Dal Lake Kashmir)")
+    image: Optional[RecommendationImage] = Field(None, description="Enriched Pexels photo metadata if available")
 
 
 class RecommendationsResponse(BaseModel):

@@ -63,8 +63,9 @@ _RECOMMENDATION_ITEM_SCHEMA = {
             "type": "array",
             "items": {"type": "string"},
         },
+        "image_search_term": {"type": "string"},
     },
-    "required": ["category", "destination", "tagline", "reason", "highlights"],
+    "required": ["category", "destination", "tagline", "reason", "highlights", "image_search_term"],
 }
 
 _RECOMMENDATIONS_RESPONSE_SCHEMA = {
@@ -218,6 +219,7 @@ def build_recommendations_prompt(preferences: Optional[UserPreference] = None) -
         "1. 'Seasonal Pick': The optimal destination to visit during this current month/season.",
         "2. 'Hidden Gem': An off-the-beaten-path destination free from excessive crowds.",
         "3. 'Experience Pick': A destination famous for an immersive cultural or adventure experience.",
+        "\nFor EACH recommendation pick, you MUST provide an 'image_search_term' representing a famous, highly recognizable landmark, natural attraction, or scenic spot at that destination (e.g. 'Dal Lake Kashmir', 'Fushimi Inari Kyoto', 'Rishikesh Ganges river'). Do NOT use generic terms like 'Kashmir travel'.",
     ]
 
     if preferences:
