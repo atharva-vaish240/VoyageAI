@@ -1,7 +1,8 @@
 import { useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
-import { useAuth } from "../hooks/useAuth";
 import { isAxiosError } from "axios";
+import { useAuth } from "../hooks/useAuth";
+import { API_BASE } from "../api/client";
 import "./auth.css";
 
 export default function LoginPage() {
@@ -12,8 +13,6 @@ export default function LoginPage() {
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
-
-  const API_BASE = import.meta.env.VITE_API_BASE_URL || "http://localhost:8000/api/v1";
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
