@@ -1,6 +1,7 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
+import app.models  # noqa: F401 — register SQLAlchemy models at startup
 from app.api.v1 import router as v1_router
 
 app = FastAPI(
