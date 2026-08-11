@@ -7,6 +7,7 @@ import SignupPage from "./pages/SignupPage";
 import OAuthCallbackPage from "./pages/OAuthCallbackPage";
 import HomePage from "./pages/HomePage";
 import TripsPage from "./pages/TripsPage";
+import TripDetailsPage from "./pages/TripDetailsPage";
 import PreferencesPage from "./pages/PreferencesPage";
 import ProfilePage from "./pages/ProfilePage";
 import AdminPage from "./pages/AdminPage";
@@ -30,6 +31,7 @@ export default function App() {
             <Route element={<AppLayout />}>
               <Route path="/app" element={<HomePage />} />
               <Route path="/app/trips" element={<TripsPage />} />
+              <Route path="/app/trips/:tripId" element={<TripDetailsPage />} />
               <Route path="/app/preferences" element={<PreferencesPage />} />
               <Route path="/app/profile" element={<ProfilePage />} />
 
