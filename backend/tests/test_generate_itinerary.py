@@ -53,6 +53,9 @@ def _create_trip(tokens: dict, destination: str = "Tokyo") -> int:
             "start_date": start.isoformat(),
             "end_date": end.isoformat(),
             "status": "PLANNED",
+            "num_travellers": 2,
+            "budget": "₹ 50000",
+            "special_requirements": "Vegetarian food only",
         },
         headers=_auth_headers(tokens),
     )
@@ -156,11 +159,14 @@ def test_generate_itinerary_passes_correct_context(mock_generate):
     )
     assert resp.status_code == 200
 
-    # Verify service was called with destination and a preferences object
+    # Verify service was called with destination, preferences, and planning details
     mock_generate.assert_called_once()
     call_kwargs = mock_generate.call_args.kwargs
     assert call_kwargs["destination"] == "Barcelona"
-    assert call_kwargs["preferences"] is not None  # preferences were loaded
+    assert call_kwargs["preferences"] is not None
+    assert call_kwargs["num_travellers"] == 2
+    assert call_kwargs["budget"] == "₹ 50000"
+    assert call_kwargs["special_requirements"] == "Vegetarian food only"
 
     _cleanup_user(email)
 
@@ -241,5 +247,37 @@ def test_generate_itinerary_missing_destination_returns_400(mock_generate):
     assert resp.status_code == 400
     assert "destination" in resp.json()["detail"].lower()
     mock_generate.assert_not_called()
+
+    _cleanup_user(email)
+
+
+# ── H. Persistence Verification ────────────────────────────────────────
+
+@patch("app.api.v1.trips.generate_itinerary")
+def test_generate_itinerary_persisted_and_retrievable_via_get_trip(mock_generate):
+    email = "gen_persisted@test.com"
+    _cleanup_user(email)
+    tokens = _signup_and_login(email)
+    trip_id = _create_trip(tokens)
+    mock_generate.return_value = _mock_itinerary()
+
+    # 1. Generate Itinerary
+    resp = client.post(
+        f"/api/v1/trips/{trip_id}/generate-itinerary",
+        headers=_auth_headers(tokens),
+    )
+    assert resp.status_code == 200
+
+    # 2. Retrieve Trip Details (GET /api/v1/trips/{trip_id})
+    get_resp = client.get(
+        f"/api/v1/trips/{trip_id}",
+        headers=_auth_headers(tokens),
+    )
+    assert get_resp.status_code == 200
+    trip_detail = get_resp.json()
+    assert trip_detail["itinerary"] is not None
+    assert trip_detail["itinerary"]["trip_summary"] == "A wonderful trip to Tokyo."
+    assert trip_detail["num_travellers"] == 2
+    assert trip_detail["budget"] == "₹ 50000"
 
     _cleanup_user(email)

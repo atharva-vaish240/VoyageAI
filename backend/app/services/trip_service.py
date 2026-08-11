@@ -25,6 +25,9 @@ def create_trip(db: Session, user_id: int, data: TripCreate) -> Trip:
         start_date=data.start_date,
         end_date=data.end_date,
         status=data.status,
+        num_travellers=data.num_travellers,
+        budget=data.budget,
+        special_requirements=data.special_requirements,
     )
     db.add(trip)
     db.commit()

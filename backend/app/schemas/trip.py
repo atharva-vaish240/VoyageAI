@@ -6,6 +6,7 @@ from typing import Optional
 from pydantic import BaseModel, Field, model_validator
 
 from app.models.trip import TripStatus
+from app.schemas.itinerary import ItinerarySchema
 
 
 # ── Request schemas ──────────────────────────────────────────────
@@ -16,6 +17,9 @@ class TripCreate(BaseModel):
     start_date: date
     end_date: date
     status: TripStatus = Field(default=TripStatus.DRAFT)
+    num_travellers: Optional[int] = Field(None, ge=1)
+    budget: Optional[str] = Field(None, max_length=100)
+    special_requirements: Optional[str] = None
 
     @model_validator(mode="after")
     def validate_dates(self):
@@ -31,6 +35,9 @@ class TripUpdate(BaseModel):
     start_date: Optional[date] = None
     end_date: Optional[date] = None
     status: Optional[TripStatus] = None
+    num_travellers: Optional[int] = Field(None, ge=1)
+    budget: Optional[str] = Field(None, max_length=100)
+    special_requirements: Optional[str] = None
 
     @model_validator(mode="after")
     def validate_dates(self):
@@ -42,6 +49,7 @@ class TripUpdate(BaseModel):
 # ── Response schemas ─────────────────────────────────────────────
 
 class TripResponse(BaseModel):
+    """Lightweight response for trip lists."""
     id: int
     user_id: int
     title: str
@@ -53,3 +61,11 @@ class TripResponse(BaseModel):
     updated_at: datetime
 
     model_config = {"from_attributes": True}
+
+
+class TripDetailResponse(TripResponse):
+    """Detailed response for single trip view, including planning info and itinerary."""
+    num_travellers: Optional[int] = None
+    budget: Optional[str] = None
+    special_requirements: Optional[str] = None
+    itinerary: Optional[ItinerarySchema] = None

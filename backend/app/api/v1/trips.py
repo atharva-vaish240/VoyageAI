@@ -7,7 +7,7 @@ from app.api.deps import get_current_user
 from app.core.database import get_db
 from app.models.user import User
 from app.models.preference import UserPreference
-from app.schemas.trip import TripCreate, TripUpdate, TripResponse
+from app.schemas.trip import TripCreate, TripUpdate, TripResponse, TripDetailResponse
 from app.schemas.itinerary import ItinerarySchema
 from app.services.trip_service import (
     TripError,
@@ -41,24 +41,24 @@ def list_trips_route(
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
-    """List all trips belonging to the authenticated user, optionally filtered by status."""
+    """List all trips belonging to the authenticated user, optionally filtered by status (lightweight)."""
     return list_user_trips(db, current_user.id, status=status)
 
 
-@router.get("/{trip_id}", response_model=TripResponse)
+@router.get("/{trip_id}", response_model=TripDetailResponse)
 def get_trip_route(
     trip_id: int,
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
-    """Retrieve a single trip belonging to the authenticated user."""
+    """Retrieve a single trip belonging to the authenticated user, including planning info and itinerary."""
     try:
         return get_user_trip(db, current_user.id, trip_id)
     except TripError as e:
         raise HTTPException(status_code=e.status_code, detail=e.detail)
 
 
-@router.patch("/{trip_id}", response_model=TripResponse)
+@router.patch("/{trip_id}", response_model=TripDetailResponse)
 def update_trip_route(
     trip_id: int,
     body: TripUpdate,
@@ -92,7 +92,7 @@ def generate_itinerary_route(
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
-    """Generate an AI-powered itinerary for the given trip using the user's preferences.
+    """Generate an AI-powered itinerary for the given trip and persist it in PostgreSQL.
 
     The trip must belong to the authenticated user.
     """
@@ -115,13 +115,19 @@ def generate_itinerary_route(
         .first()
     )
 
-    # 3. Call the AI service
+    # 3. Call the AI service & persist generated itinerary to DB
     try:
-        return generate_itinerary(
+        itinerary = generate_itinerary(
             destination=trip.destination,
             start_date=trip.start_date,
             end_date=trip.end_date,
             preferences=preferences,
+            num_travellers=trip.num_travellers,
+            budget=trip.budget,
+            special_requirements=trip.special_requirements,
         )
+        trip.itinerary = itinerary.model_dump(mode="json")
+        db.commit()
+        return itinerary
     except AIServiceError as e:
         raise HTTPException(status_code=503, detail=str(e))

@@ -3,6 +3,7 @@ import type {
   TripCreate,
   TripUpdate,
   TripResponse,
+  TripDetailResponse,
   TripStatusFilter,
 } from "../types/trip";
 import type { ItinerarySchema } from "../types/itinerary";
@@ -15,10 +16,10 @@ export const tripsApi = {
     api.get<TripResponse[]>("/trips", { params: { status } }),
 
   getTrip: (tripId: number) =>
-    api.get<TripResponse>(`/trips/${tripId}`),
+    api.get<TripDetailResponse>(`/trips/${tripId}`),
 
   updateTrip: (tripId: number, data: TripUpdate) =>
-    api.patch<TripResponse>(`/trips/${tripId}`, data),
+    api.patch<TripDetailResponse>(`/trips/${tripId}`, data),
 
   deleteTrip: (tripId: number) =>
     api.delete<void>(`/trips/${tripId}`),

@@ -1,7 +1,7 @@
 import { useState, useEffect } from "react";
 import { useParams, useNavigate, Link } from "react-router-dom";
 import { tripsApi } from "../api/trips";
-import type { TripResponse } from "../types/trip";
+import type { TripDetailResponse } from "../types/trip";
 import type { ItinerarySchema } from "../types/itinerary";
 import EditTripModal from "../components/trips/EditTripModal";
 import "./TripDetailsPage.css";
@@ -12,7 +12,7 @@ export default function TripDetailsPage() {
 
   const numericTripId = tripId ? parseInt(tripId, 10) : NaN;
 
-  const [trip, setTrip] = useState<TripResponse | null>(null);
+  const [trip, setTrip] = useState<TripDetailResponse | null>(null);
   const [itinerary, setItinerary] = useState<ItinerarySchema | null>(null);
 
   const [loadingTrip, setLoadingTrip] = useState(true);
@@ -42,6 +42,11 @@ export default function TripDetailsPage() {
         const { data } = await tripsApi.getTrip(numericTripId);
         if (isMounted) {
           setTrip(data);
+          if (data.itinerary) {
+            setItinerary(data.itinerary);
+          } else {
+            setItinerary(null);
+          }
         }
       } catch (err: unknown) {
         if (isMounted) {

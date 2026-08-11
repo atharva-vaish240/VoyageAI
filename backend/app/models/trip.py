@@ -7,10 +7,12 @@ from sqlalchemy import (
     Column,
     Integer,
     String,
+    Text,
     Date,
     DateTime,
     Enum,
     ForeignKey,
+    JSON,
 )
 from sqlalchemy.orm import relationship
 
@@ -39,6 +41,14 @@ class Trip(Base):
     start_date = Column(Date, nullable=False)
     end_date = Column(Date, nullable=False)
     status = Column(Enum(TripStatus), nullable=False, default=TripStatus.DRAFT)
+
+    # Trip-specific planning details
+    num_travellers = Column(Integer, nullable=True)
+    budget = Column(String(100), nullable=True)
+    special_requirements = Column(Text, nullable=True)
+
+    # Persisted AI Itinerary JSON
+    itinerary = Column(JSON, nullable=True)
 
     created_at = Column(
         DateTime(timezone=True),
