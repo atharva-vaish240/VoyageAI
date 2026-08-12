@@ -3,6 +3,7 @@ import { Link, Outlet, useLocation } from "react-router-dom";
 import { useAuth } from "../../hooks/useAuth";
 import PillNav from "../ui/PillNav";
 import type { PillNavItem } from "../ui/PillNav";
+import SpecularButton from "../ui/SpecularButton";
 import "./AppLayout.css";
 
 export default function AppLayout() {
@@ -75,18 +76,34 @@ export default function AppLayout() {
 
   const userControlElement = (
     <div className="profile-menu" ref={menuRef}>
-      <button
-        className="profile-trigger"
+      <SpecularButton
+        size="custom"
+        radius={9999}
+        tint="#8b5cf6"
+        tintOpacity={0.15}
+        blur={4}
+        textColor="#ffffff"
+        lineColor="#c084fc"
+        baseColor="#1e1b4b"
+        intensity={1.2}
+        shineSize={18}
+        shineFade={36}
+        thickness={1.5}
+        speed={0.35}
+        followMouse={true}
+        proximity={250}
+        autoAnimate={false}
         onClick={() => setMenuOpen((prev) => !prev)}
-        aria-expanded={menuOpen}
-        aria-haspopup="true"
+        ariaExpanded={menuOpen}
+        ariaHasPopup="true"
+        className="profile-trigger"
       >
         <span className="profile-avatar">
           {user?.name?.charAt(0).toUpperCase() || "U"}
         </span>
         <span className="profile-name">{user?.name}</span>
         <span className="profile-caret">▾</span>
-      </button>
+      </SpecularButton>
 
       {menuOpen && (
         <div className="profile-dropdown">
