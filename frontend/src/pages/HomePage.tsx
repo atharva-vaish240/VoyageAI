@@ -220,12 +220,10 @@ export default function HomePage() {
         </div>
       </div>
 
-      {selectedPick && (
-        <ConversationalPlanner
-          selectedPick={selectedPick}
-          onResetSelection={() => setSelectedPick(null)}
-        />
-      )}
+      <ConversationalPlanner
+        selectedPick={selectedPick}
+        onResetSelection={() => setSelectedPick(null)}
+      />
     </div>
   );
 }
