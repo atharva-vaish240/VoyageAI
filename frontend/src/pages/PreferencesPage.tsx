@@ -148,7 +148,7 @@ export default function PreferencesPage() {
 
   if (loading) {
     return (
-      <div className="page-container preferences-page">
+      <div className="preferences-page-wrapper">
         <div className="pref-loading">
           <div className="spinner" />
           <p>Loading your travel preferences...</p>
@@ -158,171 +158,197 @@ export default function PreferencesPage() {
   }
 
   return (
-    <div className="page-container preferences-page">
-      <div className="pref-header">
-        <h1>Travel Preferences</h1>
-        <p>Customize your travel style so VoyageAI can tailor personalized itineraries for you.</p>
+    <div className="preferences-page-wrapper">
+      {/* Fixed Scenic Background Layer */}
+      <div className="pref-scenic-bg-layer" aria-hidden="true">
+        <img
+          src="/voyageai-prefernces-background.png"
+          alt=""
+          className="pref-scenic-img"
+        />
+        <div className="pref-scenic-fade-overlay" />
       </div>
 
-      {error && <div className="pref-alert pref-alert-error" role="alert">{error}</div>}
-      {successMsg && <div className="pref-alert pref-alert-success" role="status">{successMsg}</div>}
-
-      <form className="pref-form" onSubmit={handleSubmit}>
-        {/* Food Preference */}
-        <div className="pref-group">
-          <label htmlFor="food-pref" className="pref-label">Food Preference</label>
-          <select
-            id="food-pref"
-            className="pref-select"
-            value={foodPreference}
-            onChange={(e) => setFoodPreference(e.target.value as FoodPreference)}
-          >
-            {FOOD_OPTIONS.map((opt) => (
-              <option key={opt.value} value={opt.value}>
-                {opt.label}
-              </option>
-            ))}
-          </select>
+      <div className="preferences-container">
+        {/* Left Hero Section */}
+        <div className="pref-left-hero">
+          <h1>Travel Preferences</h1>
+          <p>
+            Customize your travel style so VoyageAI can tailor personalized itineraries for you.
+          </p>
         </div>
 
-        {/* Drinking Preference */}
-        <div className="pref-group">
-          <label htmlFor="drinking-pref" className="pref-label">Drinking Preference</label>
-          <select
-            id="drinking-pref"
-            className="pref-select"
-            value={drinkingPreference}
-            onChange={(e) => setDrinkingPreference(e.target.value as DrinkingPreference)}
-          >
-            {DRINKING_OPTIONS.map((opt) => (
-              <option key={opt.value} value={opt.value}>
-                {opt.label}
-              </option>
-            ))}
-          </select>
-        </div>
-
-        {/* Travel Style */}
-        <div className="pref-group">
-          <label htmlFor="travel-style" className="pref-label">Travel Style</label>
-          <select
-            id="travel-style"
-            className="pref-select"
-            value={travelStyle}
-            onChange={(e) => setTravelStyle(e.target.value as TravelStyle)}
-          >
-            {STYLE_OPTIONS.map((opt) => (
-              <option key={opt.value} value={opt.value}>
-                {opt.label}
-              </option>
-            ))}
-          </select>
-        </div>
-
-        {/* Travel Pace */}
-        <div className="pref-group">
-          <label htmlFor="travel-pace" className="pref-label">Travel Pace</label>
-          <select
-            id="travel-pace"
-            className="pref-select"
-            value={travelPace}
-            onChange={(e) => setTravelPace(e.target.value as TravelPace)}
-          >
-            {PACE_OPTIONS.map((opt) => (
-              <option key={opt.value} value={opt.value}>
-                {opt.label}
-              </option>
-            ))}
-          </select>
-        </div>
-
-        {/* Accommodation Preference */}
-        <div className="pref-group">
-          <label htmlFor="accommodation-pref" className="pref-label">Accommodation Preference</label>
-          <select
-            id="accommodation-pref"
-            className="pref-select"
-            value={accommodationPreference}
-            onChange={(e) => setAccommodationPreference(e.target.value as AccommodationPreference)}
-          >
-            {ACCOMMODATION_OPTIONS.map((opt) => (
-              <option key={opt.value} value={opt.value}>
-                {opt.label}
-              </option>
-            ))}
-          </select>
-        </div>
-
-        {/* Interests */}
-        <div className="pref-group">
-          <label htmlFor="interests-input" className="pref-label">Interests & Activities</label>
-          <p className="pref-hint">Add hobbies, sights, or activities you enjoy (e.g. beaches, hiking, museums).</p>
-          <div className="interests-input-wrapper">
-            <input
-              id="interests-input"
-              type="text"
-              className="pref-input"
-              placeholder="Type an interest and press Add"
-              value={interestInput}
-              onChange={(e) => setInterestInput(e.target.value)}
-              onKeyDown={(e) => {
-                if (e.key === "Enter") {
-                  e.preventDefault();
-                  handleAddInterest();
-                }
-              }}
-            />
-            <button
-              type="button"
-              className="pref-btn pref-btn-secondary"
-              onClick={handleAddInterest}
-            >
-              Add
-            </button>
-          </div>
-          {interests.length > 0 && (
-            <div className="interests-tags">
-              {interests.map((tag) => (
-                <span key={tag} className="interest-tag">
-                  {tag}
-                  <button
-                    type="button"
-                    className="tag-remove-btn"
-                    onClick={() => handleRemoveInterest(tag)}
-                    aria-label={`Remove ${tag}`}
-                  >
-                    ×
-                  </button>
-                </span>
-              ))}
+        {/* Right Form Card */}
+        <div className="pref-right-card-wrapper">
+          {error && (
+            <div className="pref-alert pref-alert-error" role="alert">
+              {error}
             </div>
           )}
-        </div>
+          {successMsg && (
+            <div className="pref-alert pref-alert-success" role="status">
+              {successMsg}
+            </div>
+          )}
 
-        {/* Additional Preferences */}
-        <div className="pref-group">
-          <label htmlFor="additional-pref" className="pref-label">Additional Notes / Requests</label>
-          <textarea
-            id="additional-pref"
-            className="pref-textarea"
-            rows={3}
-            placeholder="Any allergies, mobility requirements, or specific travel notes..."
-            value={additionalPreferences}
-            onChange={(e) => setAdditionalPreferences(e.target.value)}
-          />
-        </div>
+          <form className="pref-right-card" onSubmit={handleSubmit}>
+            {/* Food Preference */}
+            <div className="pref-field-group">
+              <label htmlFor="food-pref" className="pref-field-label">
+                Food Preference
+              </label>
+              <select
+                id="food-pref"
+                className="pref-field-select"
+                value={foodPreference}
+                onChange={(e) => setFoodPreference(e.target.value as FoodPreference)}
+              >
+                {FOOD_OPTIONS.map((opt) => (
+                  <option key={opt.value} value={opt.value}>
+                    {opt.label}
+                  </option>
+                ))}
+              </select>
+            </div>
 
-        {/* Actions */}
-        <div className="pref-actions">
-          <button
-            type="submit"
-            className="pref-btn pref-btn-primary"
-            disabled={saving}
-          >
-            {saving ? "Saving Preferences..." : "Save Preferences"}
-          </button>
+            {/* Drinking Preference */}
+            <div className="pref-field-group">
+              <label htmlFor="drinking-pref" className="pref-field-label">
+                Drinking Preference
+              </label>
+              <select
+                id="drinking-pref"
+                className="pref-field-select"
+                value={drinkingPreference}
+                onChange={(e) => setDrinkingPreference(e.target.value as DrinkingPreference)}
+              >
+                {DRINKING_OPTIONS.map((opt) => (
+                  <option key={opt.value} value={opt.value}>
+                    {opt.label}
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            {/* Travel Style */}
+            <div className="pref-field-group">
+              <label htmlFor="travel-style" className="pref-field-label">
+                Travel Style
+              </label>
+              <select
+                id="travel-style"
+                className="pref-field-select"
+                value={travelStyle}
+                onChange={(e) => setTravelStyle(e.target.value as TravelStyle)}
+              >
+                {STYLE_OPTIONS.map((opt) => (
+                  <option key={opt.value} value={opt.value}>
+                    {opt.label}
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            {/* Travel Pace */}
+            <div className="pref-field-group">
+              <label htmlFor="travel-pace" className="pref-field-label">
+                Travel Pace
+              </label>
+              <select
+                id="travel-pace"
+                className="pref-field-select"
+                value={travelPace}
+                onChange={(e) => setTravelPace(e.target.value as TravelPace)}
+              >
+                {PACE_OPTIONS.map((opt) => (
+                  <option key={opt.value} value={opt.value}>
+                    {opt.label}
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            {/* Accommodation Preference */}
+            <div className="pref-field-group">
+              <label htmlFor="accommodation-pref" className="pref-field-label">
+                Accommodation Preference
+              </label>
+              <select
+                id="accommodation-pref"
+                className="pref-field-select"
+                value={accommodationPreference}
+                onChange={(e) =>
+                  setAccommodationPreference(e.target.value as AccommodationPreference)
+                }
+              >
+                {ACCOMMODATION_OPTIONS.map((opt) => (
+                  <option key={opt.value} value={opt.value}>
+                    {opt.label}
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            {/* Interests & Activities */}
+            <div className="pref-field-group">
+              <label htmlFor="interests-input" className="pref-field-label">
+                Interests & Activities
+              </label>
+              <div className="pref-field-hint">Add hobbies, sights, or activities you enjoy</div>
+              <div className="interests-pill-box">
+                {interests.map((tag) => (
+                  <span key={tag} className="interest-tag-pill">
+                    {tag}
+                    <button
+                      type="button"
+                      className="tag-remove-btn"
+                      onClick={() => handleRemoveInterest(tag)}
+                      aria-label={`Remove ${tag}`}
+                    >
+                      ×
+                    </button>
+                  </span>
+                ))}
+                <input
+                  id="interests-input"
+                  type="text"
+                  className="interests-inline-input"
+                  placeholder="Type and press Add"
+                  value={interestInput}
+                  onChange={(e) => setInterestInput(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter") {
+                      e.preventDefault();
+                      handleAddInterest();
+                    }
+                  }}
+                />
+              </div>
+            </div>
+
+            {/* Additional Notes */}
+            <div className="pref-field-group">
+              <label htmlFor="additional-pref" className="pref-field-label">
+                Additional Notes / Requests
+              </label>
+              <textarea
+                id="additional-pref"
+                className="pref-field-textarea"
+                rows={2}
+                placeholder="Any allergies, mobility requirements, or specific travel notes..."
+                value={additionalPreferences}
+                onChange={(e) => setAdditionalPreferences(e.target.value)}
+              />
+            </div>
+
+            {/* Submit Button */}
+            <button type="submit" className="pref-save-btn" disabled={saving}>
+              <span>💾</span>
+              <span>{saving ? "Saving Preferences..." : "Save Preferences"}</span>
+            </button>
+          </form>
         </div>
-      </form>
+      </div>
     </div>
   );
 }
