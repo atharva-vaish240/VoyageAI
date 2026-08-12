@@ -26,7 +26,7 @@ GOOGLE_TOKEN_URL = "https://oauth2.googleapis.com/token"
 GOOGLE_USERINFO_URL = "https://www.googleapis.com/oauth2/v2/userinfo"
 
 # The backend callback URL — Google redirects here after consent
-BACKEND_CALLBACK = "http://localhost:8000/api/v1/oauth/google/callback"
+
 
 
 @router.get("/login")
@@ -39,7 +39,7 @@ def google_login():
 
     params = {
         "client_id": settings.GOOGLE_CLIENT_ID,
-        "redirect_uri": BACKEND_CALLBACK,
+        "redirect_uri": settings.GOOGLE_BACKEND_CALLBACK,
         "response_type": "code",
         "scope": "openid email profile",
         "access_type": "offline",
@@ -62,7 +62,7 @@ def google_callback(code: str, db: Session = Depends(get_db)):
                 "code": code,
                 "client_id": settings.GOOGLE_CLIENT_ID,
                 "client_secret": settings.GOOGLE_CLIENT_SECRET,
-                "redirect_uri": BACKEND_CALLBACK,
+                "redirect_uri": settings.GOOGLE_BACKEND_CALLBACK,
                 "grant_type": "authorization_code",
             },
             timeout=10.0,

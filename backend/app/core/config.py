@@ -20,8 +20,16 @@ class Settings(BaseSettings):
     # Google OAuth
     GOOGLE_CLIENT_ID: str = ""
     GOOGLE_CLIENT_SECRET: str = ""
-    GOOGLE_REDIRECT_URI: str = "http://localhost:5173/auth/google/callback"
-
+    
+    # Frontend callback used by Google Calendar OAuth & Google Sign-In redirect
+    GOOGLE_REDIRECT_URI: str = (
+        "https://voyageai-1zzx.onrender.com/auth/google/callback"
+    )
+    
+    # Backend callback used by Google Login OAuth
+    GOOGLE_BACKEND_CALLBACK: str = (
+        "https://voyageai-backend-kovu.onrender.com/api/v1/oauth/google/callback"
+    )
     # Gemini
     GEMINI_API_KEY: str = ""
     GEMINI_MODEL: str = "gemini-3.5-flash"
