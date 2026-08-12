@@ -121,139 +121,172 @@ export default function HomePage() {
   };
 
   return (
-    <div className="page-container home-page">
-      <div className="home-header">
-        <div className="home-header-title">
-          <h1>Discover Your Next Destination, {user?.name || "Traveler"} 👋</h1>
-          <p>Hand-picked AI recommendations tailored to your preferences & current season.</p>
-        </div>
+    <div className="home-page">
+      <div className="home-hero">
+        <div className="hero-left">
+          <h1 className="hero-title">
+            Discover your
+            <span className="hero-title-accent">next destination</span>
+          </h1>
 
-        <button
-          type="button"
-          className="refresh-btn"
-          onClick={handleRefresh}
-          disabled={loading}
-          aria-label="Refresh Recommendations"
-        >
-          🔄 {loading ? "Generating..." : "Refresh Recommendations"}
-        </button>
-      </div>
+          <p className="hero-description">
+            AI-powered recommendations tailored to your preferences and current season.
+          </p>
 
-      {error && (
-        <div className="home-alert" role="alert">
-          <span>{error}</span>
-          <button type="button" onClick={fetchFreshRecommendations}>
-            Retry
+          <button
+            type="button"
+            className="refresh-btn"
+            onClick={handleRefresh}
+            disabled={loading}
+            aria-label="Refresh Recommendations"
+          >
+            <span>✨</span> {loading ? "Generating..." : "Refresh Recommendations"}
           </button>
+
+          <div className="hero-value-props">
+            <div className="value-prop-item">
+              <div className="value-prop-icon">✨</div>
+              <div className="value-prop-text">
+                <h4>Smart Picks</h4>
+                <p>Tailored for you</p>
+              </div>
+            </div>
+
+            <div className="value-prop-item">
+              <div className="value-prop-icon">🌐</div>
+              <div className="value-prop-text">
+                <h4>Unique Places</h4>
+                <p>Handpicked gems</p>
+              </div>
+            </div>
+
+            <div className="value-prop-item">
+              <div className="value-prop-icon">💼</div>
+              <div className="value-prop-text">
+                <h4>Better Trips</h4>
+                <p>Personalized experiences</p>
+              </div>
+            </div>
+          </div>
         </div>
-      )}
 
-      {loading ? (
-        <div className="recommendations-grid" data-testid="recommendations-loading">
-          <div className="skeleton-card">
-            <div className="skeleton-image" />
-            <div className="skeleton-badge" />
-            <div className="skeleton-title" />
-            <div className="skeleton-text" />
-            <div className="skeleton-btn" />
-          </div>
-          <div className="skeleton-card">
-            <div className="skeleton-image" />
-            <div className="skeleton-badge" />
-            <div className="skeleton-title" />
-            <div className="skeleton-text" />
-            <div className="skeleton-btn" />
-          </div>
-          <div className="skeleton-card">
-            <div className="skeleton-image" />
-            <div className="skeleton-badge" />
-            <div className="skeleton-title" />
-            <div className="skeleton-text" />
-            <div className="skeleton-btn" />
-          </div>
-        </div>
-      ) : recommendations ? (
-        <div className="recommendations-grid" data-testid="recommendations-grid">
-          {[
-            recommendations.seasonal_pick,
-            recommendations.hidden_gem,
-            recommendations.experience_pick,
-          ].map((pick, idx) => {
-            const isSelected = selectedPick?.destination === pick.destination;
-            const imageUrl = pick.image?.url;
-            const hasValidImage = imageUrl && !failedImageUrls[imageUrl];
+        <div className="hero-right">
+          {error && (
+            <div className="home-alert" role="alert">
+              <span>{error}</span>
+              <button type="button" onClick={fetchFreshRecommendations}>
+                Retry
+              </button>
+            </div>
+          )}
 
-            return (
-              <div
-                key={idx}
-                className={`recommendation-card ${isSelected ? "card-selected" : ""}`}
-                data-testid={`recommendation-card-${idx}`}
-              >
-                {hasValidImage && pick.image && (
-                  <div className="card-image-wrapper">
-                    <img
-                      src={pick.image.url}
-                      alt={pick.destination}
-                      className="card-image"
-                      onError={() => handleImageError(pick.image!.url)}
-                      data-testid={`recommendation-image-${idx}`}
-                    />
-                    <div className="card-image-attribution" data-testid={`recommendation-attribution-${idx}`}>
-                      Photo by{" "}
-                      <a
-                        href={pick.image.photographer_url}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                      >
-                        {pick.image.photographer}
-                      </a>{" "}
-                      on{" "}
-                      <a
-                        href={pick.image.pexels_url}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                      >
-                        Pexels
-                      </a>
-                    </div>
-                  </div>
-                )}
+          {loading ? (
+            <div className="cards-container" data-testid="recommendations-loading">
+              <div className="skeleton-card">
+                <div className="skeleton-image" />
+                <div className="skeleton-title" />
+                <div className="skeleton-text" />
+                <div className="skeleton-btn" />
+              </div>
+              <div className="skeleton-card">
+                <div className="skeleton-image" />
+                <div className="skeleton-title" />
+                <div className="skeleton-text" />
+                <div className="skeleton-btn" />
+              </div>
+            </div>
+          ) : recommendations ? (
+            <>
+              <div className="cards-container" data-testid="recommendations-grid">
+                {[
+                  recommendations.seasonal_pick,
+                  recommendations.hidden_gem,
+                  recommendations.experience_pick,
+                ].map((pick, idx) => {
+                  const isSelected = selectedPick?.destination === pick.destination;
+                  const imageUrl = pick.image?.url;
+                  const hasValidImage = imageUrl && !failedImageUrls[imageUrl];
 
-                <div className="card-body">
-                  <div className="card-content">
-                    <div className={`category-badge ${getCategoryBadgeClass(pick.category)}`}>
-                      <span>{getCategoryIcon(pick.category)}</span> {pick.category}
-                    </div>
+                  return (
+                    <div
+                      key={idx}
+                      className={`recommendation-card ${isSelected ? "card-selected" : ""}`}
+                      data-testid={`recommendation-card-${idx}`}
+                    >
+                      <div className="card-image-wrapper">
+                        {hasValidImage && pick.image && (
+                          <>
+                            <img
+                              src={pick.image.url}
+                              alt={pick.destination}
+                              className="card-image"
+                              onError={() => handleImageError(pick.image!.url)}
+                              data-testid={`recommendation-image-${idx}`}
+                            />
+                            <div
+                              className="card-image-attribution"
+                              data-testid={`recommendation-attribution-${idx}`}
+                            >
+                              Photo by{" "}
+                              <a
+                                href={pick.image.photographer_url}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                              >
+                                {pick.image.photographer}
+                              </a>{" "}
+                              on{" "}
+                              <a
+                                href={pick.image.pexels_url}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                              >
+                                Pexels
+                              </a>
+                            </div>
+                          </>
+                        )}
+                        <div
+                          className={`category-badge-floating ${getCategoryBadgeClass(
+                            pick.category
+                          )}`}
+                        >
+                          <span>{getCategoryIcon(pick.category)}</span> {pick.category}
+                        </div>
+                      </div>
 
-                    <h3>{pick.destination}</h3>
-                    <div className="card-tagline">{pick.tagline}</div>
-                    <p className="card-reason">{pick.reason}</p>
+                      <div className="card-body">
+                        <div>
+                          <h3 className="card-title">{pick.destination}</h3>
+                          <div className="card-tagline">{pick.tagline}</div>
+                          <p className="card-reason">{pick.reason}</p>
+                        </div>
 
-                    <div className="highlights-section">
-                      <div className="highlights-title">Top Highlights</div>
-                      <div className="highlights-tags">
-                        {pick.highlights.map((tag, tagIdx) => (
-                          <span key={tagIdx} className="highlight-tag">
-                            {tag}
-                          </span>
-                        ))}
+                        <button
+                          type="button"
+                          className="card-explore-btn"
+                          onClick={() => handleSelectCard(pick)}
+                        >
+                          {isSelected
+                            ? "✓ Selected"
+                            : `Explore ${pick.destination.split(",")[0]} →`}
+                        </button>
                       </div>
                     </div>
-                  </div>
-
-                  <button
-                    type="button"
-                    className="card-action-btn"
-                    onClick={() => handleSelectCard(pick)}
-                  >
-                    {isSelected ? "✓ Destination Selected" : `Explore ${pick.destination}`}
-                  </button>
-                </div>
+                  );
+                })}
               </div>
-            );
-          })}
+
+              {/* Pagination Dots */}
+              <div className="hero-pagination-dots">
+                <span className="dot active"></span>
+                <span className="dot"></span>
+                <span className="dot"></span>
+              </div>
+            </>
+          ) : null}
         </div>
-      ) : null}
+      </div>
 
       {selectedPick && (
         <ConversationalPlanner

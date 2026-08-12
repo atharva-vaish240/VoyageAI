@@ -39,7 +39,16 @@ export default function AppLayout() {
     <div className="app-layout">
       <header className="app-header">
         <Link to="/app" className="app-logo">
-          VoyageAI
+          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" className="logo-svg">
+            <path d="M2.01 21L23 12L2.01 3L2 10L17 12L2 14L2.01 21Z" fill="url(#logo-grad)" />
+            <defs>
+              <linearGradient id="logo-grad" x1="2" y1="3" x2="23" y2="21" gradientUnits="userSpaceOnUse">
+                <stop stopColor="#a78bfa" />
+                <stop offset="1" stopColor="#7c3aed" />
+              </linearGradient>
+            </defs>
+          </svg>
+          <span className="logo-text">VoyageAI</span>
         </Link>
 
         <nav className="app-nav">
