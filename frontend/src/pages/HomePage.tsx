@@ -8,6 +8,7 @@ import {
 } from "../utils/recommendationCache";
 import type { RecommendationsResponse, RecommendationItem } from "../types/recommendation";
 import ConversationalPlanner from "../components/planner/ConversationalPlanner";
+import AccordionGallery from "../components/ui/AccordionGallery";
 import "./HomePage.css";
 
 export default function HomePage() {
@@ -196,94 +197,25 @@ export default function HomePage() {
               </div>
             </div>
           ) : recommendations ? (
-            <>
-              <div className="cards-container" data-testid="recommendations-grid">
-                {[
+            <div data-testid="recommendations-grid">
+              <AccordionGallery
+                items={[
                   recommendations.seasonal_pick,
                   recommendations.hidden_gem,
                   recommendations.experience_pick,
-                ].map((pick, idx) => {
-                  const isSelected = selectedPick?.destination === pick.destination;
-                  const imageUrl = pick.image?.url;
-                  const hasValidImage = imageUrl && !failedImageUrls[imageUrl];
-
-                  return (
-                    <div
-                      key={idx}
-                      className={`recommendation-card ${isSelected ? "card-selected" : ""}`}
-                      data-testid={`recommendation-card-${idx}`}
-                    >
-                      <div className="card-image-wrapper">
-                        {hasValidImage && pick.image && (
-                          <>
-                            <img
-                              src={pick.image.url}
-                              alt={pick.destination}
-                              className="card-image"
-                              onError={() => handleImageError(pick.image!.url)}
-                              data-testid={`recommendation-image-${idx}`}
-                            />
-                            <div
-                              className="card-image-attribution"
-                              data-testid={`recommendation-attribution-${idx}`}
-                            >
-                              Photo by{" "}
-                              <a
-                                href={pick.image.photographer_url}
-                                target="_blank"
-                                rel="noopener noreferrer"
-                              >
-                                {pick.image.photographer}
-                              </a>{" "}
-                              on{" "}
-                              <a
-                                href={pick.image.pexels_url}
-                                target="_blank"
-                                rel="noopener noreferrer"
-                              >
-                                Pexels
-                              </a>
-                            </div>
-                          </>
-                        )}
-                        <div
-                          className={`category-badge-floating ${getCategoryBadgeClass(
-                            pick.category
-                          )}`}
-                        >
-                          <span>{getCategoryIcon(pick.category)}</span> {pick.category}
-                        </div>
-                      </div>
-
-                      <div className="card-body">
-                        <div>
-                          <h3 className="card-title">{pick.destination}</h3>
-                          <div className="card-tagline">{pick.tagline}</div>
-                          <p className="card-reason">{pick.reason}</p>
-                        </div>
-
-                        <button
-                          type="button"
-                          className="card-explore-btn"
-                          onClick={() => handleSelectCard(pick)}
-                        >
-                          {isSelected
-                            ? "✓ Selected"
-                            : `Explore ${pick.destination.split(",")[0]} →`}
-                        </button>
-                      </div>
-                    </div>
-                  );
-                })}
-              </div>
-
-              {/* Pagination Dots */}
-              <div className="hero-pagination-dots">
-                <span className="dot active"></span>
-                <span className="dot"></span>
-                <span className="dot"></span>
-              </div>
-            </>
+                ]}
+                selectedPick={selectedPick}
+                onSelectCard={handleSelectCard}
+                failedImageUrls={failedImageUrls}
+                onImageError={handleImageError}
+                getCategoryBadgeClass={getCategoryBadgeClass}
+                getCategoryIcon={getCategoryIcon}
+                defaultIndex={0}
+                expandRatio={0.52}
+                trigger="hover"
+                grayscale={false}
+              />
+            </div>
           ) : null}
         </div>
       </div>
