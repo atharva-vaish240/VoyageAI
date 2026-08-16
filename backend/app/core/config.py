@@ -44,6 +44,11 @@ class Settings(BaseSettings):
     NOMINATIM_BASE_URL: str = "https://nominatim.openstreetmap.org"
     OVERPASS_API_URL: str = "https://overpass-api.de/api/interpreter"
 
+    # Redis Caching
+    REDIS_URL: str = "redis://localhost:6379/0"
+    REDIS_CACHE_TTL: int = 345600  # Default 4 days in seconds (345600s) for itineraries / suggestions
+    REDIS_RECOMMENDATION_CACHE_TTL: int = 345600  # Default 4 days in seconds (345600s) for recommendations
+
     # SMTP
     SMTP_HOST: str = "smtp.gmail.com"
     SMTP_PORT: int = 587
