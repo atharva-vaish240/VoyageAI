@@ -7,6 +7,7 @@ vi.mock("./client", () => ({
   default: {
     post: vi.fn(),
     get: vi.fn(),
+    put: vi.fn(),
     patch: vi.fn(),
     delete: vi.fn(),
   },
@@ -89,6 +90,32 @@ describe("Trips API", () => {
     const res = await tripsApi.generateItinerary(42);
 
     expect(api.post).toHaveBeenCalledWith("/trips/42/generate-itinerary");
+    expect(res.data).toEqual(mockItinerary);
+  });
+
+  it("calls GET /trips/{id}/itinerary", async () => {
+    const mockItinerary = {
+      trip_summary: "Great trip",
+      days: [],
+    };
+    (api.get as ReturnType<typeof vi.fn>).mockResolvedValue({ data: mockItinerary });
+
+    const res = await tripsApi.getItinerary(42);
+
+    expect(api.get).toHaveBeenCalledWith("/trips/42/itinerary");
+    expect(res.data).toEqual(mockItinerary);
+  });
+
+  it("calls PUT /trips/{id}/itinerary", async () => {
+    const mockItinerary = {
+      trip_summary: "Updated trip",
+      days: [],
+    };
+    (api.put as ReturnType<typeof vi.fn>).mockResolvedValue({ data: mockItinerary });
+
+    const res = await tripsApi.updateItinerary(42, mockItinerary);
+
+    expect(api.put).toHaveBeenCalledWith("/trips/42/itinerary", mockItinerary);
     expect(res.data).toEqual(mockItinerary);
   });
 });

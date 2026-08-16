@@ -135,6 +135,54 @@ def generate_itinerary_route(
         raise HTTPException(status_code=503, detail=str(e))
 
 
+@router.get("/{trip_id}/itinerary", response_model=ItinerarySchema)
+def get_trip_itinerary_route(
+    trip_id: int,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """Retrieve the persisted itinerary for the given trip.
+
+    The trip must belong to the authenticated user.
+    """
+    try:
+        trip = get_user_trip(db, current_user.id, trip_id)
+    except TripError as e:
+        raise HTTPException(status_code=e.status_code, detail=e.detail)
+
+    if not trip.itinerary:
+        raise HTTPException(
+            status_code=404,
+            detail="Itinerary not found for this trip.",
+        )
+
+    return ItinerarySchema.model_validate(trip.itinerary)
+
+
+@router.put("/{trip_id}/itinerary", response_model=ItinerarySchema)
+def update_trip_itinerary_route(
+    trip_id: int,
+    body: ItinerarySchema,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """Update / replace the persisted itinerary for the given trip.
+
+    The trip must belong to the authenticated user.
+    Updates only the user's PostgreSQL database copy without altering Redis cache.
+    """
+    try:
+        trip = get_user_trip(db, current_user.id, trip_id)
+    except TripError as e:
+        raise HTTPException(status_code=e.status_code, detail=e.detail)
+
+    trip.itinerary = body.model_dump(mode="json")
+    db.commit()
+    db.refresh(trip)
+
+    return ItinerarySchema.model_validate(trip.itinerary)
+
+
 @router.post("/{trip_id}/calendar", response_model=TripCalendarResponse)
 def schedule_trip_calendar_route(
     trip_id: int,

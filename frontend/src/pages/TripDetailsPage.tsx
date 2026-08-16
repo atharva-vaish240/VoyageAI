@@ -7,7 +7,7 @@ import {
   scheduleTripToCalendar,
 } from "../api/calendar";
 import type { TripDetailResponse } from "../types/trip";
-import type { ItinerarySchema } from "../types/itinerary";
+import type { ItinerarySchema, DaySchema, ActivitySchema } from "../types/itinerary";
 import type { TripCalendarResponse } from "../types/calendar";
 import EditTripModal from "../components/trips/EditTripModal";
 import { generateTripItineraryPdf } from "../utils/pdfGenerator";
@@ -27,6 +27,12 @@ export default function TripDetailsPage() {
 
   const [generatingItinerary, setGeneratingItinerary] = useState(false);
   const [itineraryError, setItineraryError] = useState<string | null>(null);
+
+  // Itinerary Editing State
+  const [isEditingItinerary, setIsEditingItinerary] = useState(false);
+  const [editableItinerary, setEditableItinerary] = useState<ItinerarySchema | null>(null);
+  const [savingItinerary, setSavingItinerary] = useState(false);
+  const [saveSuccessMessage, setSaveSuccessMessage] = useState<string | null>(null);
 
   const [exportingPdf, setExportingPdf] = useState(false);
   const [pdfError, setPdfError] = useState<string | null>(null);
@@ -166,10 +172,16 @@ export default function TripDetailsPage() {
 
     setGeneratingItinerary(true);
     setItineraryError(null);
+    setSaveSuccessMessage(null);
 
     try {
       const { data } = await tripsApi.generateItinerary(trip.id);
       setItinerary(data);
+      if (trip) {
+        setTrip({ ...trip, itinerary: data });
+      }
+      setIsEditingItinerary(false);
+      setEditableItinerary(null);
     } catch (err: unknown) {
       const axiosErr = err as { response?: { data?: { detail?: string } } };
       const msg =
@@ -179,6 +191,177 @@ export default function TripDetailsPage() {
     } finally {
       setGeneratingItinerary(false);
     }
+  };
+
+  // ── Itinerary Editing Handlers ─────────────────────────────────────
+  const handleStartEditItinerary = () => {
+    if (!itinerary) return;
+    setEditableItinerary(JSON.parse(JSON.stringify(itinerary)));
+    setIsEditingItinerary(true);
+    setItineraryError(null);
+    setSaveSuccessMessage(null);
+  };
+
+  const handleCancelEditItinerary = () => {
+    setIsEditingItinerary(false);
+    setEditableItinerary(null);
+    setItineraryError(null);
+  };
+
+  const handleSaveItinerary = async () => {
+    if (!editableItinerary || isNaN(numericTripId)) return;
+
+    // Validate summary
+    if (!editableItinerary.trip_summary.trim()) {
+      setItineraryError("Trip summary cannot be empty.");
+      return;
+    }
+
+    // Validate days
+    if (editableItinerary.days.length === 0) {
+      setItineraryError("Itinerary must contain at least one day.");
+      return;
+    }
+
+    for (let d = 0; d < editableItinerary.days.length; d++) {
+      const day = editableItinerary.days[d];
+      if (!day.date || !day.date.trim()) {
+        setItineraryError(`Day ${d + 1} must have a valid date.`);
+        return;
+      }
+      if (day.activities.length === 0) {
+        setItineraryError(`Day ${d + 1} must contain at least one activity.`);
+        return;
+      }
+      for (let a = 0; a < day.activities.length; a++) {
+        const act = day.activities[a];
+        if (!act.title.trim()) {
+          setItineraryError(`Activity #${a + 1} on Day ${d + 1} requires a title.`);
+          return;
+        }
+        if (!act.description.trim()) {
+          setItineraryError(`Activity "${act.title || a + 1}" on Day ${d + 1} requires a description.`);
+          return;
+        }
+        if (!act.approximate_time.trim()) {
+          setItineraryError(`Activity "${act.title}" on Day ${d + 1} requires an approximate time.`);
+          return;
+        }
+      }
+    }
+
+    setSavingItinerary(true);
+    setItineraryError(null);
+    setSaveSuccessMessage(null);
+
+    try {
+      const { data } = await tripsApi.updateItinerary(numericTripId, editableItinerary);
+      setItinerary(data);
+      if (trip) {
+        setTrip({ ...trip, itinerary: data });
+      }
+      setIsEditingItinerary(false);
+      setEditableItinerary(null);
+      setSaveSuccessMessage("Itinerary saved successfully!");
+    } catch (err: unknown) {
+      const axiosErr = err as { response?: { data?: { detail?: string } } };
+      const msg =
+        axiosErr?.response?.data?.detail || "Failed to save itinerary changes. Please try again.";
+      setItineraryError(msg);
+    } finally {
+      setSavingItinerary(false);
+    }
+  };
+
+  const updateSummary = (newSummary: string) => {
+    if (!editableItinerary) return;
+    setEditableItinerary({ ...editableItinerary, trip_summary: newSummary });
+  };
+
+  const updateDayDate = (dayIdx: number, newDate: string) => {
+    if (!editableItinerary) return;
+    const newDays = [...editableItinerary.days];
+    newDays[dayIdx] = { ...newDays[dayIdx], date: newDate };
+    setEditableItinerary({ ...editableItinerary, days: newDays });
+  };
+
+  const deleteDay = (dayIdx: number) => {
+    if (!editableItinerary) return;
+    const newDays = editableItinerary.days.filter((_, i) => i !== dayIdx);
+    setEditableItinerary({ ...editableItinerary, days: newDays });
+  };
+
+  const addDay = () => {
+    if (!editableItinerary) return;
+    let nextDate = "";
+    if (editableItinerary.days.length > 0) {
+      const lastDateStr = editableItinerary.days[editableItinerary.days.length - 1].date;
+      try {
+        const d = new Date(lastDateStr);
+        d.setDate(d.getDate() + 1);
+        nextDate = d.toISOString().split("T")[0];
+      } catch {
+        nextDate = new Date().toISOString().split("T")[0];
+      }
+    } else if (trip?.start_date) {
+      nextDate = trip.start_date;
+    } else {
+      nextDate = new Date().toISOString().split("T")[0];
+    }
+
+    const newDay: DaySchema = {
+      date: nextDate,
+      activities: [
+        {
+          title: "",
+          description: "",
+          approximate_time: "Morning",
+          location: "",
+        },
+      ],
+    };
+    setEditableItinerary({
+      ...editableItinerary,
+      days: [...editableItinerary.days, newDay],
+    });
+  };
+
+  const updateActivity = (
+    dayIdx: number,
+    actIdx: number,
+    field: keyof ActivitySchema,
+    value: string
+  ) => {
+    if (!editableItinerary) return;
+    const newDays = [...editableItinerary.days];
+    const newActs = [...newDays[dayIdx].activities];
+    newActs[actIdx] = { ...newActs[actIdx], [field]: value };
+    newDays[dayIdx] = { ...newDays[dayIdx], activities: newActs };
+    setEditableItinerary({ ...editableItinerary, days: newDays });
+  };
+
+  const addActivity = (dayIdx: number) => {
+    if (!editableItinerary) return;
+    const newDays = [...editableItinerary.days];
+    const newActs = [
+      ...newDays[dayIdx].activities,
+      {
+        title: "",
+        description: "",
+        approximate_time: "10:00 AM",
+        location: "",
+      },
+    ];
+    newDays[dayIdx] = { ...newDays[dayIdx], activities: newActs };
+    setEditableItinerary({ ...editableItinerary, days: newDays });
+  };
+
+  const deleteActivity = (dayIdx: number, actIdx: number) => {
+    if (!editableItinerary) return;
+    const newDays = [...editableItinerary.days];
+    const newActs = newDays[dayIdx].activities.filter((_, i) => i !== actIdx);
+    newDays[dayIdx] = { ...newDays[dayIdx], activities: newActs };
+    setEditableItinerary({ ...editableItinerary, days: newDays });
   };
 
   const handleExportPdf = () => {
@@ -333,13 +516,34 @@ export default function TripDetailsPage() {
       <div className="itinerary-section">
         <div className="itinerary-section-header">
           <div>
-            <h2>AI Itinerary</h2>
-            <p>Generate a customized day-by-day travel plan based on your preferences.</p>
+            <div className="itinerary-title-row">
+              <h2>AI Itinerary</h2>
+              {isEditingItinerary && (
+                <span className="itinerary-edit-mode-badge" data-testid="edit-mode-badge">
+                  Editing Mode
+                </span>
+              )}
+            </div>
+            <p>
+              {isEditingItinerary
+                ? "Modify trip overview, customize days, and update activities. Click Save to apply."
+                : "Generate or customize your day-by-day travel plan."}
+            </p>
           </div>
 
           <div className="itinerary-header-actions">
-            {itinerary && (
+            {itinerary && !isEditingItinerary && (
               <>
+                <button
+                  type="button"
+                  className="action-btn btn-secondary"
+                  onClick={handleStartEditItinerary}
+                  disabled={generatingItinerary || exportingPdf || schedulingCalendar}
+                  data-testid="edit-itinerary-btn"
+                >
+                  ✏️ Edit Itinerary
+                </button>
+
                 <button
                   type="button"
                   className={`action-btn btn-gcal ${
@@ -364,27 +568,62 @@ export default function TripDetailsPage() {
               </>
             )}
 
-            <button
-              type="button"
-              className="action-btn btn-ai"
-              onClick={handleGenerateItinerary}
-              disabled={generatingItinerary || exportingPdf || schedulingCalendar}
-            >
-              {generatingItinerary ? (
-                <>
-                  <span className="spinner-sm" /> Generating Itinerary...
-                </>
-              ) : itinerary ? (
-                "✨ Regenerate Itinerary"
-              ) : (
-                "✨ Generate Itinerary"
-              )}
-            </button>
+            {isEditingItinerary ? (
+              <>
+                <button
+                  type="button"
+                  className="action-btn btn-secondary"
+                  onClick={handleCancelEditItinerary}
+                  disabled={savingItinerary}
+                  data-testid="cancel-edit-itinerary-btn"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  className="action-btn btn-save"
+                  onClick={handleSaveItinerary}
+                  disabled={savingItinerary}
+                  data-testid="save-itinerary-btn"
+                >
+                  {savingItinerary ? (
+                    <>
+                      <span className="spinner-sm" /> Saving Changes...
+                    </>
+                  ) : (
+                    "💾 Save Changes"
+                  )}
+                </button>
+              </>
+            ) : (
+              <button
+                type="button"
+                className="action-btn btn-ai"
+                onClick={handleGenerateItinerary}
+                disabled={generatingItinerary || exportingPdf || schedulingCalendar}
+              >
+                {generatingItinerary ? (
+                  <>
+                    <span className="spinner-sm" /> Generating Itinerary...
+                  </>
+                ) : itinerary ? (
+                  "✨ Regenerate Itinerary"
+                ) : (
+                  "✨ Generate Itinerary"
+                )}
+              </button>
+            )}
           </div>
         </div>
 
+        {saveSuccessMessage && (
+          <div className="trip-alert trip-alert-success" role="status" data-testid="itinerary-save-success">
+            <p>✅ {saveSuccessMessage}</p>
+          </div>
+        )}
+
         {itineraryError && (
-          <div className="trip-alert trip-alert-error" role="alert">
+          <div className="trip-alert trip-alert-error" role="alert" data-testid="itinerary-error-banner">
             <p>{itineraryError}</p>
           </div>
         )}
@@ -458,7 +697,153 @@ export default function TripDetailsPage() {
             <p>Crafting your personalized itinerary with Gemini AI...</p>
             <span>This usually takes a few seconds.</span>
           </div>
+        ) : isEditingItinerary && editableItinerary ? (
+          /* ── Itinerary Edit Mode UI ────────────────────────────────── */
+          <div className="itinerary-edit-content" data-testid="itinerary-edit-content">
+            {/* Editable Summary Box */}
+            <div className="itinerary-edit-summary-card">
+              <label htmlFor="itinerary-summary-input" className="edit-section-label">
+                Trip Overview & Summary
+              </label>
+              <textarea
+                id="itinerary-summary-input"
+                className="itinerary-edit-textarea"
+                value={editableItinerary.trip_summary}
+                onChange={(e) => updateSummary(e.target.value)}
+                placeholder="Enter trip overview and highlights..."
+                rows={3}
+                data-testid="edit-trip-summary"
+              />
+            </div>
+
+            {/* Editable Days Breakdown */}
+            <div className="itinerary-edit-days-list">
+              {editableItinerary.days.map((day, dayIdx) => (
+                <div key={dayIdx} className="itinerary-edit-day-card" data-testid={`edit-day-card-${dayIdx}`}>
+                  <div className="day-edit-card-header">
+                    <div className="day-edit-title-group">
+                      <h4>Day {dayIdx + 1}</h4>
+                      <div className="day-date-picker-wrap">
+                        <label htmlFor={`day-date-${dayIdx}`}>Date:</label>
+                        <input
+                          id={`day-date-${dayIdx}`}
+                          type="date"
+                          value={day.date}
+                          onChange={(e) => updateDayDate(dayIdx, e.target.value)}
+                          className="day-date-input"
+                          data-testid={`edit-day-date-${dayIdx}`}
+                        />
+                      </div>
+                    </div>
+
+                    <button
+                      type="button"
+                      className="btn-delete-day"
+                      onClick={() => deleteDay(dayIdx)}
+                      title="Delete Day"
+                      data-testid={`delete-day-btn-${dayIdx}`}
+                    >
+                      🗑️ Delete Day
+                    </button>
+                  </div>
+
+                  <div className="day-edit-activities-list">
+                    {day.activities.map((act, actIdx) => (
+                      <div
+                        key={actIdx}
+                        className="activity-edit-card"
+                        data-testid={`edit-act-card-${dayIdx}-${actIdx}`}
+                      >
+                        <div className="activity-edit-top-row">
+                          <div className="activity-edit-time-group">
+                            <input
+                              type="text"
+                              value={act.approximate_time}
+                              onChange={(e) =>
+                                updateActivity(dayIdx, actIdx, "approximate_time", e.target.value)
+                              }
+                              placeholder="Time (e.g. 09:00 AM)"
+                              className="act-time-input"
+                              data-testid={`edit-act-time-${dayIdx}-${actIdx}`}
+                            />
+                          </div>
+
+                          <div className="activity-edit-title-group">
+                            <input
+                              type="text"
+                              value={act.title}
+                              onChange={(e) =>
+                                updateActivity(dayIdx, actIdx, "title", e.target.value)
+                              }
+                              placeholder="Activity Title *"
+                              className="act-title-input"
+                              data-testid={`edit-act-title-${dayIdx}-${actIdx}`}
+                            />
+                          </div>
+
+                          <div className="activity-edit-location-group">
+                            <input
+                              type="text"
+                              value={act.location || ""}
+                              onChange={(e) =>
+                                updateActivity(dayIdx, actIdx, "location", e.target.value)
+                              }
+                              placeholder="Location (optional)"
+                              className="act-location-input"
+                              data-testid={`edit-act-location-${dayIdx}-${actIdx}`}
+                            />
+                          </div>
+
+                          <button
+                            type="button"
+                            className="btn-delete-act"
+                            onClick={() => deleteActivity(dayIdx, actIdx)}
+                            title="Delete Activity"
+                            data-testid={`delete-act-btn-${dayIdx}-${actIdx}`}
+                          >
+                            ✕
+                          </button>
+                        </div>
+
+                        <div className="activity-edit-bottom-row">
+                          <textarea
+                            value={act.description}
+                            onChange={(e) =>
+                              updateActivity(dayIdx, actIdx, "description", e.target.value)
+                            }
+                            placeholder="Activity Description *"
+                            rows={2}
+                            className="act-desc-textarea"
+                            data-testid={`edit-act-desc-${dayIdx}-${actIdx}`}
+                          />
+                        </div>
+                      </div>
+                    ))}
+
+                    <button
+                      type="button"
+                      className="btn-add-activity"
+                      onClick={() => addActivity(dayIdx)}
+                      data-testid={`add-activity-btn-${dayIdx}`}
+                    >
+                      + Add Activity to Day {dayIdx + 1}
+                    </button>
+                  </div>
+                </div>
+              ))}
+
+              <button
+                type="button"
+                className="btn-add-day"
+                onClick={addDay}
+                data-testid="add-day-btn"
+              >
+                + Add New Day
+              </button>
+            </div>
+          </div>
         ) : itinerary ? (
+          /* ── Itinerary View Mode UI ────────────────────────────────── */
           <div className="itinerary-content">
             {/* Summary Box */}
             <div className="itinerary-summary-box">

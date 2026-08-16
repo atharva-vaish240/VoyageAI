@@ -16,6 +16,8 @@ vi.mock("../api/trips", () => ({
     getTrip: vi.fn(),
     generateItinerary: vi.fn(),
     deleteTrip: vi.fn(),
+    getItinerary: vi.fn(),
+    updateItinerary: vi.fn(),
   },
 }));
 
@@ -261,5 +263,286 @@ describe("TripDetailsPage Google Calendar & PDF Export", () => {
     });
 
     expect(sessionStorage.getItem("gcal_auto_schedule")).toBeNull();
+  });
+});
+
+describe("TripDetailsPage User-Editable Itinerary", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    sessionStorage.clear();
+    vi.mocked(getCalendarStatus).mockResolvedValue({ connected: true });
+  });
+
+  afterEach(() => {
+    cleanup();
+  });
+
+  const baseTripWithItinerary: TripDetailResponse = {
+    id: 900,
+    user_id: 1,
+    title: "Kyoto Autumn Getaway",
+    destination: "Kyoto, Japan",
+    start_date: "2026-10-15",
+    end_date: "2026-10-18",
+    status: "PLANNED",
+    num_travellers: 2,
+    budget: "$2,000",
+    created_at: "2026-08-11T12:00:00Z",
+    updated_at: "2026-08-11T12:00:00Z",
+    itinerary: {
+      trip_summary: "Experiencing autumn leaves in ancient Kyoto.",
+      days: [
+        {
+          date: "2026-10-15",
+          activities: [
+            {
+              title: "Fushimi Inari Shrine",
+              description: "Walk through thousands of vermilion torii gates.",
+              approximate_time: "08:30 AM",
+              location: "Fushimi Ward, Kyoto",
+            },
+          ],
+        },
+      ],
+    },
+  };
+
+  it("renders 'Edit Itinerary' button when an itinerary is present", async () => {
+    vi.mocked(tripsApi.getTrip).mockResolvedValue({ data: baseTripWithItinerary } as never);
+
+    render(
+      <MemoryRouter initialEntries={["/app/trips/900"]}>
+        <Routes>
+          <Route path="/app/trips/:tripId" element={<TripDetailsPage />} />
+        </Routes>
+      </MemoryRouter>
+    );
+
+    const editBtn = await screen.findByTestId("edit-itinerary-btn");
+    expect(editBtn).toBeDefined();
+    expect(editBtn.textContent).toContain("Edit Itinerary");
+  });
+
+  it("enters edit mode when 'Edit Itinerary' is clicked and renders form controls", async () => {
+    vi.mocked(tripsApi.getTrip).mockResolvedValue({ data: baseTripWithItinerary } as never);
+
+    render(
+      <MemoryRouter initialEntries={["/app/trips/900"]}>
+        <Routes>
+          <Route path="/app/trips/:tripId" element={<TripDetailsPage />} />
+        </Routes>
+      </MemoryRouter>
+    );
+
+    const editBtn = await screen.findByTestId("edit-itinerary-btn");
+    fireEvent.click(editBtn);
+
+    expect(screen.getByTestId("edit-mode-badge")).toBeDefined();
+    expect(screen.getByTestId("save-itinerary-btn")).toBeDefined();
+    expect(screen.getByTestId("cancel-edit-itinerary-btn")).toBeDefined();
+    expect(screen.getByTestId("edit-trip-summary")).toBeDefined();
+    expect(screen.getByTestId("edit-day-date-0")).toBeDefined();
+    expect(screen.getByTestId("edit-act-title-0-0")).toBeDefined();
+    expect(screen.getByTestId("edit-act-desc-0-0")).toBeDefined();
+    expect(screen.getByTestId("edit-act-time-0-0")).toBeDefined();
+    expect(screen.getByTestId("edit-act-location-0-0")).toBeDefined();
+  });
+
+  it("allows editing summary, title, description, time, location and saves successfully", async () => {
+    vi.mocked(tripsApi.getTrip).mockResolvedValue({ data: baseTripWithItinerary } as never);
+
+    const updatedItineraryResponse = {
+      trip_summary: "Updated Autumn in Kyoto Summary",
+      days: [
+        {
+          date: "2026-10-15",
+          activities: [
+            {
+              title: "Early Morning Torii Walk",
+              description: "Hike up the mountain peak.",
+              approximate_time: "07:00 AM",
+              location: "Mount Inari",
+            },
+          ],
+        },
+      ],
+    };
+    vi.mocked(tripsApi.updateItinerary).mockResolvedValue({ data: updatedItineraryResponse } as never);
+
+    render(
+      <MemoryRouter initialEntries={["/app/trips/900"]}>
+        <Routes>
+          <Route path="/app/trips/:tripId" element={<TripDetailsPage />} />
+        </Routes>
+      </MemoryRouter>
+    );
+
+    const editBtn = await screen.findByTestId("edit-itinerary-btn");
+    fireEvent.click(editBtn);
+
+    // Edit summary
+    const summaryInput = screen.getByTestId("edit-trip-summary");
+    fireEvent.change(summaryInput, { target: { value: "Updated Autumn in Kyoto Summary" } });
+
+    // Edit activity fields
+    const titleInput = screen.getByTestId("edit-act-title-0-0");
+    fireEvent.change(titleInput, { target: { value: "Early Morning Torii Walk" } });
+
+    const descInput = screen.getByTestId("edit-act-desc-0-0");
+    fireEvent.change(descInput, { target: { value: "Hike up the mountain peak." } });
+
+    const timeInput = screen.getByTestId("edit-act-time-0-0");
+    fireEvent.change(timeInput, { target: { value: "07:00 AM" } });
+
+    const locInput = screen.getByTestId("edit-act-location-0-0");
+    fireEvent.change(locInput, { target: { value: "Mount Inari" } });
+
+    // Save
+    const saveBtn = screen.getByTestId("save-itinerary-btn");
+    fireEvent.click(saveBtn);
+
+    await waitFor(() => {
+      expect(tripsApi.updateItinerary).toHaveBeenCalledWith(900, {
+        trip_summary: "Updated Autumn in Kyoto Summary",
+        days: [
+          {
+            date: "2026-10-15",
+            activities: [
+              {
+                title: "Early Morning Torii Walk",
+                description: "Hike up the mountain peak.",
+                approximate_time: "07:00 AM",
+                location: "Mount Inari",
+              },
+            ],
+          },
+        ],
+      });
+    });
+
+    const successBanner = await screen.findByTestId("itinerary-save-success");
+    expect(successBanner.textContent).toContain("Itinerary saved successfully!");
+    expect(screen.queryByTestId("edit-mode-badge")).toBeNull();
+  });
+
+  it("supports adding and deleting activities and days", async () => {
+    vi.mocked(tripsApi.getTrip).mockResolvedValue({ data: baseTripWithItinerary } as never);
+
+    render(
+      <MemoryRouter initialEntries={["/app/trips/900"]}>
+        <Routes>
+          <Route path="/app/trips/:tripId" element={<TripDetailsPage />} />
+        </Routes>
+      </MemoryRouter>
+    );
+
+    const editBtn = await screen.findByTestId("edit-itinerary-btn");
+    fireEvent.click(editBtn);
+
+    // Add activity to Day 1
+    const addActBtn = screen.getByTestId("add-activity-btn-0");
+    fireEvent.click(addActBtn);
+
+    expect(screen.getByTestId("edit-act-card-0-1")).toBeDefined();
+
+    // Add new Day
+    const addDayBtn = screen.getByTestId("add-day-btn");
+    fireEvent.click(addDayBtn);
+
+    expect(screen.getByTestId("edit-day-card-1")).toBeDefined();
+
+    // Delete added activity
+    const deleteActBtn = screen.getByTestId("delete-act-btn-0-1");
+    fireEvent.click(deleteActBtn);
+
+    expect(screen.queryByTestId("edit-act-card-0-1")).toBeNull();
+
+    // Delete Day 2
+    const deleteDayBtn = screen.getByTestId("delete-day-btn-1");
+    fireEvent.click(deleteDayBtn);
+
+    expect(screen.queryByTestId("edit-day-card-1")).toBeNull();
+  });
+
+  it("cancel button discards unsaved changes and restores original itinerary view", async () => {
+    vi.mocked(tripsApi.getTrip).mockResolvedValue({ data: baseTripWithItinerary } as never);
+
+    render(
+      <MemoryRouter initialEntries={["/app/trips/900"]}>
+        <Routes>
+          <Route path="/app/trips/:tripId" element={<TripDetailsPage />} />
+        </Routes>
+      </MemoryRouter>
+    );
+
+    const editBtn = await screen.findByTestId("edit-itinerary-btn");
+    fireEvent.click(editBtn);
+
+    // Modify summary
+    const summaryInput = screen.getByTestId("edit-trip-summary");
+    fireEvent.change(summaryInput, { target: { value: "Unsaved Temporary Edits" } });
+
+    // Cancel
+    const cancelBtn = screen.getByTestId("cancel-edit-itinerary-btn");
+    fireEvent.click(cancelBtn);
+
+    // Edit mode should close
+    expect(screen.queryByTestId("edit-mode-badge")).toBeNull();
+    expect(tripsApi.updateItinerary).not.toHaveBeenCalled();
+
+    // Original summary should still be displayed
+    expect(screen.getByText("Experiencing autumn leaves in ancient Kyoto.")).toBeDefined();
+  });
+
+  it("validates empty summary or invalid inputs before calling API", async () => {
+    vi.mocked(tripsApi.getTrip).mockResolvedValue({ data: baseTripWithItinerary } as never);
+
+    render(
+      <MemoryRouter initialEntries={["/app/trips/900"]}>
+        <Routes>
+          <Route path="/app/trips/:tripId" element={<TripDetailsPage />} />
+        </Routes>
+      </MemoryRouter>
+    );
+
+    const editBtn = await screen.findByTestId("edit-itinerary-btn");
+    fireEvent.click(editBtn);
+
+    // Clear summary
+    const summaryInput = screen.getByTestId("edit-trip-summary");
+    fireEvent.change(summaryInput, { target: { value: "   " } });
+
+    const saveBtn = screen.getByTestId("save-itinerary-btn");
+    fireEvent.click(saveBtn);
+
+    expect(tripsApi.updateItinerary).not.toHaveBeenCalled();
+    const errorBanner = screen.getByTestId("itinerary-error-banner");
+    expect(errorBanner.textContent).toContain("Trip summary cannot be empty.");
+  });
+
+  it("handles API failure when saving and displays error banner without losing edit state", async () => {
+    vi.mocked(tripsApi.getTrip).mockResolvedValue({ data: baseTripWithItinerary } as never);
+    vi.mocked(tripsApi.updateItinerary).mockRejectedValue({
+      response: { data: { detail: "Database save failed." } },
+    });
+
+    render(
+      <MemoryRouter initialEntries={["/app/trips/900"]}>
+        <Routes>
+          <Route path="/app/trips/:tripId" element={<TripDetailsPage />} />
+        </Routes>
+      </MemoryRouter>
+    );
+
+    const editBtn = await screen.findByTestId("edit-itinerary-btn");
+    fireEvent.click(editBtn);
+
+    const saveBtn = screen.getByTestId("save-itinerary-btn");
+    fireEvent.click(saveBtn);
+
+    const errorBanner = await screen.findByTestId("itinerary-error-banner");
+    expect(errorBanner.textContent).toContain("Database save failed.");
+    // Remains in edit mode
+    expect(screen.getByTestId("edit-mode-badge")).toBeDefined();
   });
 });

@@ -26,4 +26,10 @@ export const tripsApi = {
 
   generateItinerary: (tripId: number) =>
     api.post<ItinerarySchema>(`/trips/${tripId}/generate-itinerary`),
+
+  getItinerary: (tripId: number) =>
+    api.get<ItinerarySchema>(`/trips/${tripId}/itinerary`),
+
+  updateItinerary: (tripId: number, data: ItinerarySchema) =>
+    api.put<ItinerarySchema>(`/trips/${tripId}/itinerary`, data),
 };
