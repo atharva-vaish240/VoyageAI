@@ -18,6 +18,9 @@ vi.mock("../api/trips", () => ({
     deleteTrip: vi.fn(),
     getItinerary: vi.fn(),
     updateItinerary: vi.fn(),
+    listMembers: vi.fn(),
+    addMember: vi.fn(),
+    removeMember: vi.fn(),
   },
 }));
 
@@ -544,5 +547,178 @@ describe("TripDetailsPage User-Editable Itinerary", () => {
     expect(errorBanner.textContent).toContain("Database save failed.");
     // Remains in edit mode
     expect(screen.getByTestId("edit-mode-badge")).toBeDefined();
+  });
+});
+
+describe("TripDetailsPage Trip Collaboration", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    sessionStorage.clear();
+    vi.mocked(getCalendarStatus).mockResolvedValue({ connected: false });
+  });
+
+  afterEach(() => {
+    cleanup();
+  });
+
+  const baseOwnerTrip: TripDetailResponse = {
+    id: 888,
+    user_id: 1,
+    title: "Bali Adventure",
+    destination: "Bali, Indonesia",
+    start_date: "2026-11-01",
+    end_date: "2026-11-10",
+    status: "PLANNED",
+    role: "OWNER",
+    is_owner: true,
+    created_at: "2026-08-16T12:00:00Z",
+    updated_at: "2026-08-16T12:00:00Z",
+    members: [
+      {
+        id: 0,
+        trip_id: 888,
+        user_id: 1,
+        email: "alice@test.com",
+        name: "Alice Owner",
+        role: "OWNER",
+        created_at: "2026-08-16T12:00:00Z",
+      },
+      {
+        id: 1,
+        trip_id: 888,
+        user_id: 2,
+        email: "bob@test.com",
+        name: "Bob Collaborator",
+        role: "MEMBER",
+        created_at: "2026-08-16T12:00:00Z",
+      },
+    ],
+    itinerary: {
+      trip_summary: "A fun beach and cultural trip in Bali.",
+      days: [
+        {
+          date: "2026-11-01",
+          activities: [
+            {
+              title: "Uluwatu Temple Sunset",
+              description: "Watch the kecak fire dance.",
+              approximate_time: "05:00 PM",
+              location: "Uluwatu",
+            },
+          ],
+        },
+      ],
+    },
+  };
+
+  const sharedMemberTrip: TripDetailResponse = {
+    ...baseOwnerTrip,
+    role: "MEMBER",
+    is_owner: false,
+  };
+
+  it("renders owner badges, edit/delete trip buttons, and add-member form for trip owner", async () => {
+    vi.mocked(tripsApi.getTrip).mockResolvedValue({ data: baseOwnerTrip } as never);
+
+    render(
+      <MemoryRouter initialEntries={["/app/trips/888"]}>
+        <Routes>
+          <Route path="/app/trips/:tripId" element={<TripDetailsPage />} />
+        </Routes>
+      </MemoryRouter>
+    );
+
+    expect(await screen.findByTestId("role-owner-badge")).toBeDefined();
+    expect(screen.getByTestId("edit-trip-metadata-btn")).toBeDefined();
+    expect(screen.getByTestId("delete-trip-btn")).toBeDefined();
+    expect(screen.getByTestId("add-member-form")).toBeDefined();
+
+    // Both members rendered
+    expect(screen.getByTestId("collaborator-card-1")).toBeDefined();
+    expect(screen.getByTestId("collaborator-card-2")).toBeDefined();
+    // Remove button available for member 2
+    expect(screen.getByTestId("remove-member-btn-2")).toBeDefined();
+  });
+
+  it("renders shared trip badge and hides owner-only actions for invited member", async () => {
+    vi.mocked(tripsApi.getTrip).mockResolvedValue({ data: sharedMemberTrip } as never);
+
+    render(
+      <MemoryRouter initialEntries={["/app/trips/888"]}>
+        <Routes>
+          <Route path="/app/trips/:tripId" element={<TripDetailsPage />} />
+        </Routes>
+      </MemoryRouter>
+    );
+
+    expect(await screen.findByTestId("role-member-badge")).toBeDefined();
+    expect(screen.queryByTestId("edit-trip-metadata-btn")).toBeNull();
+    expect(screen.queryByTestId("delete-trip-btn")).toBeNull();
+    expect(screen.queryByTestId("add-member-form")).toBeNull();
+    expect(screen.queryByTestId("remove-member-btn-2")).toBeNull();
+
+    // Member can still edit itinerary
+    expect(screen.getByTestId("edit-itinerary-btn")).toBeDefined();
+  });
+
+  it("owner can successfully add a new collaborator by email", async () => {
+    vi.mocked(tripsApi.getTrip).mockResolvedValue({ data: baseOwnerTrip } as never);
+    const newMember = {
+      id: 3,
+      trip_id: 888,
+      user_id: 3,
+      email: "charlie@test.com",
+      name: "Charlie Friend",
+      role: "MEMBER",
+      created_at: "2026-08-16T13:00:00Z",
+    };
+    vi.mocked(tripsApi.addMember).mockResolvedValue({ data: newMember } as never);
+
+    render(
+      <MemoryRouter initialEntries={["/app/trips/888"]}>
+        <Routes>
+          <Route path="/app/trips/:tripId" element={<TripDetailsPage />} />
+        </Routes>
+      </MemoryRouter>
+    );
+
+    await screen.findByTestId("add-member-form");
+
+    const emailInput = screen.getByTestId("invite-email-input");
+    fireEvent.change(emailInput, { target: { value: "charlie@test.com" } });
+
+    const inviteBtn = screen.getByTestId("invite-member-btn");
+    fireEvent.click(inviteBtn);
+
+    await waitFor(() => {
+      expect(tripsApi.addMember).toHaveBeenCalledWith(888, "charlie@test.com");
+    });
+
+    expect(await screen.findByTestId("member-success-alert")).toBeDefined();
+    expect(screen.getByTestId("collaborator-card-3")).toBeDefined();
+    expect(screen.getByText("Charlie Friend")).toBeDefined();
+  });
+
+  it("owner can remove a collaborator", async () => {
+    vi.mocked(tripsApi.getTrip).mockResolvedValue({ data: baseOwnerTrip } as never);
+    vi.mocked(tripsApi.removeMember).mockResolvedValue({ data: undefined } as never);
+    vi.spyOn(window, "confirm").mockReturnValue(true);
+
+    render(
+      <MemoryRouter initialEntries={["/app/trips/888"]}>
+        <Routes>
+          <Route path="/app/trips/:tripId" element={<TripDetailsPage />} />
+        </Routes>
+      </MemoryRouter>
+    );
+
+    const removeBtn = await screen.findByTestId("remove-member-btn-2");
+    fireEvent.click(removeBtn);
+
+    await waitFor(() => {
+      expect(tripsApi.removeMember).toHaveBeenCalledWith(888, 2);
+    });
+
+    expect(screen.queryByTestId("collaborator-card-2")).toBeNull();
   });
 });

@@ -129,19 +129,21 @@ export default function SpecularButton({
     autoAnimate,
   });
 
-  propsRef.current = {
-    radius,
-    lineColor,
-    baseColor,
-    intensity,
-    shineSize,
-    shineFade,
-    thickness,
-    speed,
-    followMouse,
-    proximity,
-    autoAnimate,
-  };
+  useEffect(() => {
+    propsRef.current = {
+      radius,
+      lineColor,
+      baseColor,
+      intensity,
+      shineSize,
+      shineFade,
+      thickness,
+      speed,
+      followMouse,
+      proximity,
+      autoAnimate,
+    };
+  });
 
   useEffect(() => {
     const btn = btnRef.current;
@@ -150,7 +152,7 @@ export default function SpecularButton({
 
     const dpr = window.devicePixelRatio || 1;
     let renderer: Renderer | null = null;
-    let gl: any = null;
+    let gl: Renderer["gl"] | null = null;
     let animationFrameId: number;
     let removeListener: (() => void) | null = null;
 
@@ -274,8 +276,8 @@ export default function SpecularButton({
         cancelAnimationFrame(animationFrameId);
         ro.disconnect();
         if (removeListener) removeListener();
-        if (gl && gl.canvas && (gl.canvas as any).parentNode === fx) {
-          fx.removeChild(gl.canvas as any);
+        if (gl && gl.canvas && gl.canvas.parentNode === fx) {
+          fx.removeChild(gl.canvas);
         }
         if (gl) {
           gl.getExtension("WEBGL_lose_context")?.loseContext();

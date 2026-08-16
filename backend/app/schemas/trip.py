@@ -1,9 +1,8 @@
-"""Pydantic schemas for trips."""
+"""Pydantic schemas for trips and trip collaboration."""
 
 from datetime import date, datetime
 from typing import Optional
-
-from pydantic import BaseModel, Field, model_validator
+from pydantic import BaseModel, EmailStr, Field, model_validator
 
 from app.models.trip import TripStatus
 from app.schemas.itinerary import ItinerarySchema
@@ -49,7 +48,23 @@ class TripUpdate(BaseModel):
         return self
 
 
+class AddTripMemberRequest(BaseModel):
+    email: EmailStr = Field(..., description="Email of the user to add to the trip")
+
+
 # ── Response schemas ─────────────────────────────────────────────
+
+class TripMemberResponse(BaseModel):
+    id: int
+    trip_id: int
+    user_id: int
+    email: str
+    name: str
+    role: str = "MEMBER"
+    created_at: datetime
+
+    model_config = {"from_attributes": True}
+
 
 class TripResponse(BaseModel):
     """Lightweight response for trip lists."""
@@ -63,13 +78,16 @@ class TripResponse(BaseModel):
     destination_image: Optional[RecommendationImage] = None
     created_at: datetime
     updated_at: datetime
+    role: Optional[str] = "OWNER"
+    is_owner: Optional[bool] = True
 
     model_config = {"from_attributes": True}
 
 
 class TripDetailResponse(TripResponse):
-    """Detailed response for single trip view, including planning info and itinerary."""
+    """Detailed response for single trip view, including planning info, itinerary, and members."""
     num_travellers: Optional[int] = None
     budget: Optional[str] = None
     special_requirements: Optional[str] = None
     itinerary: Optional[ItinerarySchema] = None
+    members: Optional[list[TripMemberResponse]] = None

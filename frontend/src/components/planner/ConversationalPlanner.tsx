@@ -58,11 +58,13 @@ export default function ConversationalPlanner({
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
   // Auto-open panel when a new destination is selected
+  const prevDestinationRef = useRef<string | undefined>(undefined);
   useEffect(() => {
-    if (selectedPick) {
+    if (selectedPick?.destination && selectedPick.destination !== prevDestinationRef.current) {
+      prevDestinationRef.current = selectedPick.destination;
       setIsOpen(true);
     }
-  }, [selectedPick?.destination]);
+  }, [selectedPick]);
 
   // Auto-scroll chat to latest message
   useEffect(() => {

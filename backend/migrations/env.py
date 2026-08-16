@@ -24,6 +24,8 @@ if config.config_file_name is not None:
 from app.models import user  # noqa: F401
 from app.models import preference  # noqa: F401
 from app.models import trip  # noqa: F401
+from app.models import trip_member  # noqa: F401
+from app.models import google_calendar  # noqa: F401
 target_metadata = Base.metadata
 
 

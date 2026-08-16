@@ -65,6 +65,21 @@ export default function TripsPage() {
     setFailedImageUrls((prev) => ({ ...prev, [url]: true }));
   };
 
+  const getRoleBadge = (trip: TripResponse) => {
+    if (trip.is_owner === false || trip.role === "MEMBER") {
+      return (
+        <span className="role-badge role-member" title="Shared with you" data-testid={`role-badge-${trip.id}`}>
+          👥 Shared
+        </span>
+      );
+    }
+    return (
+      <span className="role-badge role-owner" title="You own this trip" data-testid={`role-badge-${trip.id}`}>
+        👑 Owner
+      </span>
+    );
+  };
+
   const getStatusBadge = (status: string) => {
     switch (status) {
       case "COMPLETED":
@@ -240,7 +255,10 @@ export default function TripsPage() {
                   <div className="trip-card-body">
                     <div className="trip-card-header">
                       <h3 className="trip-card-title">{trip.title}</h3>
-                      {getStatusBadge(trip.status)}
+                      <div className="trip-card-badges">
+                        {getRoleBadge(trip)}
+                        {getStatusBadge(trip.status)}
+                      </div>
                     </div>
 
                     {trip.destination && (

@@ -5,6 +5,20 @@ export type TripStatus = "DRAFT" | "PLANNED" | "COMPLETED";
 
 export type TripStatusFilter = "upcoming" | "past" | "all";
 
+export interface TripMemberResponse {
+  id: number;
+  trip_id: number;
+  user_id: number;
+  email: string;
+  name: string;
+  role: "OWNER" | "MEMBER" | string;
+  created_at: string;
+}
+
+export interface AddTripMemberRequest {
+  email: string;
+}
+
 export interface TripCreate {
   title: string;
   destination?: string | null;
@@ -40,6 +54,8 @@ export interface TripResponse {
   destination_image?: RecommendationImage | null;
   created_at: string;
   updated_at: string;
+  role?: "OWNER" | "MEMBER" | string;
+  is_owner?: boolean;
 }
 
 export interface TripDetailResponse extends TripResponse {
@@ -47,4 +63,5 @@ export interface TripDetailResponse extends TripResponse {
   budget?: string | null;
   special_requirements?: string | null;
   itinerary?: ItinerarySchema | null;
+  members?: TripMemberResponse[];
 }

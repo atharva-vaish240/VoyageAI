@@ -1,13 +1,20 @@
-"""Trip CRUD endpoints + AI itinerary generation + Google Calendar scheduling."""
+"""Trip CRUD endpoints + Collaboration / Members + AI itinerary generation + Google Calendar scheduling."""
 
-from fastapi import APIRouter, Depends, HTTPException, Response
+from fastapi import APIRouter, Depends, HTTPException, Response, status
 from sqlalchemy.orm import Session
 
 from app.api.deps import get_current_user
 from app.core.database import get_db
 from app.models.user import User
 from app.models.preference import UserPreference
-from app.schemas.trip import TripCreate, TripUpdate, TripResponse, TripDetailResponse
+from app.schemas.trip import (
+    TripCreate,
+    TripUpdate,
+    TripResponse,
+    TripDetailResponse,
+    TripMemberResponse,
+    AddTripMemberRequest,
+)
 from app.schemas.itinerary import ItinerarySchema
 from app.schemas.calendar import TripCalendarResponse
 from app.services.trip_service import (
@@ -15,8 +22,12 @@ from app.services.trip_service import (
     create_trip,
     list_user_trips,
     get_user_trip,
+    get_trip_detail,
     update_trip,
     delete_trip,
+    list_trip_members,
+    add_trip_member,
+    remove_trip_member,
 )
 from app.services.ai_service import generate_itinerary, AIServiceError
 from app.services.google_calendar_service import (
@@ -27,7 +38,7 @@ from app.services.google_calendar_service import (
 router = APIRouter(prefix="/trips", tags=["Trips"])
 
 
-@router.post("", response_model=TripResponse, status_code=201)
+@router.post("", response_model=TripResponse, status_code=status.HTTP_201_CREATED)
 def create_trip_route(
     body: TripCreate,
     current_user: User = Depends(get_current_user),
@@ -46,7 +57,7 @@ def list_trips_route(
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
-    """List all trips belonging to the authenticated user, optionally filtered by status (lightweight)."""
+    """List all trips owned by or shared with the authenticated user, optionally filtered by status."""
     return list_user_trips(db, current_user.id, status=status)
 
 
@@ -56,9 +67,9 @@ def get_trip_route(
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
-    """Retrieve a single trip belonging to the authenticated user, including planning info and itinerary."""
+    """Retrieve a single trip (owned or shared), including planning info, itinerary, and member list."""
     try:
-        return get_user_trip(db, current_user.id, trip_id)
+        return get_trip_detail(db, current_user.id, trip_id)
     except TripError as e:
         raise HTTPException(status_code=e.status_code, detail=e.detail)
 
@@ -70,26 +81,86 @@ def update_trip_route(
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
-    """Update a trip belonging to the authenticated user."""
+    """Update trip metadata (owner only)."""
     try:
-        return update_trip(db, current_user.id, trip_id, body)
+        update_trip(db, current_user.id, trip_id, body)
+        return get_trip_detail(db, current_user.id, trip_id)
     except TripError as e:
         raise HTTPException(status_code=e.status_code, detail=e.detail)
 
 
-@router.delete("/{trip_id}", status_code=204)
+@router.delete("/{trip_id}", status_code=status.HTTP_204_NO_CONTENT)
 def delete_trip_route(
     trip_id: int,
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
-    """Delete a trip belonging to the authenticated user."""
+    """Delete a trip (owner only)."""
     try:
         delete_trip(db, current_user.id, trip_id)
     except TripError as e:
         raise HTTPException(status_code=e.status_code, detail=e.detail)
-    return Response(status_code=204)
+    return Response(status_code=status.HTTP_204_NO_CONTENT)
 
+
+# ── Trip Collaboration / Members Endpoints ───────────────────────
+
+@router.post(
+    "/{trip_id}/members",
+    response_model=TripMemberResponse,
+    status_code=status.HTTP_201_CREATED,
+    summary="Add a registered user to a trip (owner only)",
+)
+def add_member_route(
+    trip_id: int,
+    body: AddTripMemberRequest,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """Add a registered user to the trip by email (owner only)."""
+    try:
+        return add_trip_member(db, current_user.id, trip_id, body.email)
+    except TripError as e:
+        raise HTTPException(status_code=e.status_code, detail=e.detail)
+
+
+@router.get(
+    "/{trip_id}/members",
+    response_model=list[TripMemberResponse],
+    summary="List all collaborators of a trip (owner and members)",
+)
+def list_members_route(
+    trip_id: int,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """Retrieve the member list for the trip (accessible to owner and members)."""
+    try:
+        return list_trip_members(db, current_user.id, trip_id)
+    except TripError as e:
+        raise HTTPException(status_code=e.status_code, detail=e.detail)
+
+
+@router.delete(
+    "/{trip_id}/members/{user_id}",
+    status_code=status.HTTP_204_NO_CONTENT,
+    summary="Remove a member from a trip (owner only)",
+)
+def remove_member_route(
+    trip_id: int,
+    user_id: int,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """Remove a member from the trip (owner only). Cannot remove the trip owner."""
+    try:
+        remove_trip_member(db, current_user.id, trip_id, user_id)
+    except TripError as e:
+        raise HTTPException(status_code=e.status_code, detail=e.detail)
+    return Response(status_code=status.HTTP_204_NO_CONTENT)
+
+
+# ── Itinerary Endpoints (Shared with members) ────────────────────
 
 @router.post("/{trip_id}/generate-itinerary", response_model=ItinerarySchema)
 def generate_itinerary_route(
@@ -99,10 +170,10 @@ def generate_itinerary_route(
 ):
     """Generate an AI-powered itinerary for the given trip and persist it in PostgreSQL.
 
-    The trip must belong to the authenticated user.
+    Owner only.
     """
     try:
-        trip = get_user_trip(db, current_user.id, trip_id)
+        trip = get_user_trip(db, current_user.id, trip_id, require_owner=True)
     except TripError as e:
         raise HTTPException(status_code=e.status_code, detail=e.detail)
 
@@ -143,7 +214,7 @@ def get_trip_itinerary_route(
 ):
     """Retrieve the persisted itinerary for the given trip.
 
-    The trip must belong to the authenticated user.
+    Accessible to owner and members.
     """
     try:
         trip = get_user_trip(db, current_user.id, trip_id)
@@ -168,8 +239,8 @@ def update_trip_itinerary_route(
 ):
     """Update / replace the persisted itinerary for the given trip.
 
-    The trip must belong to the authenticated user.
-    Updates only the user's PostgreSQL database copy without altering Redis cache.
+    Accessible to owner and members.
+    Updates the canonical PostgreSQL database copy.
     """
     try:
         trip = get_user_trip(db, current_user.id, trip_id)
@@ -191,8 +262,8 @@ def schedule_trip_calendar_route(
 ):
     """Schedule the itinerary of a user's trip into their primary Google Calendar.
 
-    Enforces trip ownership (returns 404 if not found/unauthorized).
-    Requires a valid connected Google Calendar for the user.
+    Accessible to owner and members.
+    Requires a valid connected Google Calendar for the calling user.
     """
     try:
         trip = get_user_trip(db, current_user.id, trip_id)

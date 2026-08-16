@@ -5,6 +5,7 @@ import type {
   TripResponse,
   TripDetailResponse,
   TripStatusFilter,
+  TripMemberResponse,
 } from "../types/trip";
 import type { ItinerarySchema } from "../types/itinerary";
 
@@ -32,4 +33,13 @@ export const tripsApi = {
 
   updateItinerary: (tripId: number, data: ItinerarySchema) =>
     api.put<ItinerarySchema>(`/trips/${tripId}/itinerary`, data),
+
+  listMembers: (tripId: number) =>
+    api.get<TripMemberResponse[]>(`/trips/${tripId}/members`),
+
+  addMember: (tripId: number, email: string) =>
+    api.post<TripMemberResponse>(`/trips/${tripId}/members`, { email }),
+
+  removeMember: (tripId: number, userId: number) =>
+    api.delete<void>(`/trips/${tripId}/members/${userId}`),
 };

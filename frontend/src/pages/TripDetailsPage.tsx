@@ -6,7 +6,7 @@ import {
   getCalendarAuthUrl,
   scheduleTripToCalendar,
 } from "../api/calendar";
-import type { TripDetailResponse } from "../types/trip";
+import type { TripDetailResponse, TripMemberResponse } from "../types/trip";
 import type { ItinerarySchema, DaySchema, ActivitySchema } from "../types/itinerary";
 import type { TripCalendarResponse } from "../types/calendar";
 import EditTripModal from "../components/trips/EditTripModal";
@@ -21,6 +21,7 @@ export default function TripDetailsPage() {
 
   const [trip, setTrip] = useState<TripDetailResponse | null>(null);
   const [itinerary, setItinerary] = useState<ItinerarySchema | null>(null);
+  const [members, setMembers] = useState<TripMemberResponse[]>([]);
 
   const [loadingTrip, setLoadingTrip] = useState(true);
   const [tripError, setTripError] = useState<string | null>(null);
@@ -46,6 +47,15 @@ export default function TripDetailsPage() {
   const [isEditOpen, setIsEditOpen] = useState(false);
   const [isDeleteConfirmOpen, setIsDeleteConfirmOpen] = useState(false);
   const [deleting, setDeleting] = useState(false);
+
+  // Collaborators Management State
+  const [inviteEmail, setInviteEmail] = useState("");
+  const [invitingMember, setInvitingMember] = useState(false);
+  const [memberError, setMemberError] = useState<string | null>(null);
+  const [memberSuccess, setMemberSuccess] = useState<string | null>(null);
+  const [removingMemberId, setRemovingMemberId] = useState<number | null>(null);
+
+  const isOwner = trip ? (trip.is_owner ?? (trip.role === "OWNER")) : true;
 
   // One-click calendar scheduling function
   const handleScheduleCalendar = useCallback(async (targetTripId: number) => {
@@ -104,6 +114,9 @@ export default function TripDetailsPage() {
             setItinerary(data.itinerary);
           } else {
             setItinerary(null);
+          }
+          if (data.members) {
+            setMembers(data.members);
           }
         }
       } catch (err: unknown) {
@@ -190,6 +203,50 @@ export default function TripDetailsPage() {
       setItineraryError(msg);
     } finally {
       setGeneratingItinerary(false);
+    }
+  };
+
+  // ── Member Management Handlers ─────────────────────────────────────
+  const handleAddMember = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!inviteEmail.trim() || isNaN(numericTripId)) return;
+
+    setInvitingMember(true);
+    setMemberError(null);
+    setMemberSuccess(null);
+
+    try {
+      const { data: newMember } = await tripsApi.addMember(numericTripId, inviteEmail.trim());
+      setMembers((prev) => [...prev, newMember]);
+      setInviteEmail("");
+      setMemberSuccess(`Successfully added ${newMember.name || newMember.email} to this trip!`);
+    } catch (err: unknown) {
+      const axiosErr = err as { response?: { data?: { detail?: string } } };
+      const msg = axiosErr?.response?.data?.detail || "Failed to add member to trip.";
+      setMemberError(msg);
+    } finally {
+      setInvitingMember(false);
+    }
+  };
+
+  const handleRemoveMember = async (userId: number, userName: string) => {
+    if (isNaN(numericTripId)) return;
+    if (!window.confirm(`Are you sure you want to remove ${userName} from this trip?`)) return;
+
+    setRemovingMemberId(userId);
+    setMemberError(null);
+    setMemberSuccess(null);
+
+    try {
+      await tripsApi.removeMember(numericTripId, userId);
+      setMembers((prev) => prev.filter((m) => m.user_id !== userId));
+      setMemberSuccess(`${userName} was removed from this trip.`);
+    } catch (err: unknown) {
+      const axiosErr = err as { response?: { data?: { detail?: string } } };
+      const msg = axiosErr?.response?.data?.detail || "Failed to remove member.";
+      setMemberError(msg);
+    } finally {
+      setRemovingMemberId(null);
     }
   };
 
@@ -293,7 +350,7 @@ export default function TripDetailsPage() {
 
   const addDay = () => {
     if (!editableItinerary) return;
-    let nextDate = "";
+    let nextDate: string;
     if (editableItinerary.days.length > 0) {
       const lastDateStr = editableItinerary.days[editableItinerary.days.length - 1].date;
       try {
@@ -479,7 +536,18 @@ export default function TripDetailsPage() {
         <div className="trip-header-main">
           <div className="trip-header-title-row">
             <h1>{trip.title}</h1>
-            {getStatusBadge(trip.status)}
+            <div className="trip-header-badges">
+              {isOwner ? (
+                <span className="role-badge role-owner" title="You own this trip" data-testid="role-owner-badge">
+                  👑 Owner
+                </span>
+              ) : (
+                <span className="role-badge role-member" title="Shared with you" data-testid="role-member-badge">
+                  👥 Shared Trip
+                </span>
+              )}
+              {getStatusBadge(trip.status)}
+            </div>
           </div>
 
           <div className="trip-header-meta">
@@ -494,22 +562,135 @@ export default function TripDetailsPage() {
           </div>
         </div>
 
-        <div className="trip-header-actions">
-          <button
-            type="button"
-            className="action-btn btn-secondary"
-            onClick={() => setIsEditOpen(true)}
-          >
-            ✏️ Edit Trip
-          </button>
-          <button
-            type="button"
-            className="action-btn btn-danger"
-            onClick={() => setIsDeleteConfirmOpen(true)}
-          >
-            🗑️ Delete Trip
-          </button>
+        {/* Header Actions - Edit & Delete only for owner */}
+        {isOwner && (
+          <div className="trip-header-actions">
+            <button
+              type="button"
+              className="action-btn btn-secondary"
+              onClick={() => setIsEditOpen(true)}
+              data-testid="edit-trip-metadata-btn"
+            >
+              ✏️ Edit Trip
+            </button>
+            <button
+              type="button"
+              className="action-btn btn-danger"
+              onClick={() => setIsDeleteConfirmOpen(true)}
+              data-testid="delete-trip-btn"
+            >
+              🗑️ Delete Trip
+            </button>
+          </div>
+        )}
+      </div>
+
+      {/* Trip Collaborators Section */}
+      <div className="trip-collaborators-section" data-testid="trip-collaborators-section">
+        <div className="collaborators-section-header">
+          <div>
+            <h3>👥 Trip Collaborators</h3>
+            <p>
+              {isOwner
+                ? "Manage access to this trip. Added members can view and collaborate on the itinerary."
+                : "View all collaborators on this shared trip."}
+            </p>
+          </div>
         </div>
+
+        {memberSuccess && (
+          <div className="trip-alert trip-alert-success" role="status" data-testid="member-success-alert">
+            <p>✅ {memberSuccess}</p>
+          </div>
+        )}
+
+        {memberError && (
+          <div className="trip-alert trip-alert-error" role="alert" data-testid="member-error-alert">
+            <p>{memberError}</p>
+          </div>
+        )}
+
+        {/* Collaborators List */}
+        <div className="collaborators-grid">
+          {members.map((member) => {
+            const isMemberOwner = member.role === "OWNER";
+            const initials = member.name
+              ? member.name
+                  .split(" ")
+                  .map((n) => n[0])
+                  .join("")
+                  .slice(0, 2)
+                  .toUpperCase()
+              : member.email.slice(0, 2).toUpperCase();
+
+            return (
+              <div
+                key={`${member.user_id}-${member.role}`}
+                className="collaborator-card"
+                data-testid={`collaborator-card-${member.user_id}`}
+              >
+                <div className={`collab-avatar ${isMemberOwner ? "collab-avatar-owner" : "collab-avatar-member"}`}>
+                  {initials}
+                </div>
+                <div className="collab-info">
+                  <div className="collab-name-row">
+                    <span className="collab-name">{member.name || member.email}</span>
+                    {isMemberOwner ? (
+                      <span className="role-badge role-owner">👑 Owner</span>
+                    ) : (
+                      <span className="role-badge role-member">👥 Member</span>
+                    )}
+                  </div>
+                  <span className="collab-email">{member.email}</span>
+                </div>
+
+                {isOwner && !isMemberOwner && (
+                  <button
+                    type="button"
+                    className="btn-remove-member"
+                    onClick={() => handleRemoveMember(member.user_id, member.name || member.email)}
+                    disabled={removingMemberId === member.user_id}
+                    title="Remove member"
+                    data-testid={`remove-member-btn-${member.user_id}`}
+                  >
+                    {removingMemberId === member.user_id ? "..." : "✕ Remove"}
+                  </button>
+                )}
+              </div>
+            );
+          })}
+        </div>
+
+        {/* Invite Member Form (Owner only) */}
+        {isOwner && (
+          <form className="add-member-form" onSubmit={handleAddMember} data-testid="add-member-form">
+            <div className="add-member-input-wrap">
+              <input
+                type="email"
+                placeholder="Enter collaborator's registered email..."
+                value={inviteEmail}
+                onChange={(e) => setInviteEmail(e.target.value)}
+                className="add-member-input"
+                required
+                data-testid="invite-email-input"
+              />
+              <button
+                type="submit"
+                className="btn-add-member"
+                disabled={invitingMember || !inviteEmail.trim()}
+                data-testid="invite-member-btn"
+              >
+                {invitingMember ? (
+                  <>
+                    <span className="spinner-sm" /> Adding...
+                  </>
+                ) : (
+                  "➕ Add Collaborator"
+                )}
+              </button>
+            </div>
+          </form>
+        )}
       </div>
 
       {/* AI Itinerary Section */}
@@ -526,7 +707,7 @@ export default function TripDetailsPage() {
             </div>
             <p>
               {isEditingItinerary
-                ? "Modify trip overview, customize days, and update activities. Click Save to apply."
+                ? "Modify trip overview, customize days, and update activities. Click Save to apply for all collaborators."
                 : "Generate or customize your day-by-day travel plan."}
             </p>
           </div>
@@ -595,7 +776,7 @@ export default function TripDetailsPage() {
                   )}
                 </button>
               </>
-            ) : (
+            ) : isOwner ? (
               <button
                 type="button"
                 className="action-btn btn-ai"
@@ -612,7 +793,7 @@ export default function TripDetailsPage() {
                   "✨ Generate Itinerary"
                 )}
               </button>
-            )}
+            ) : null}
           </div>
         </div>
 
@@ -883,7 +1064,13 @@ export default function TripDetailsPage() {
             <div className="placeholder-icon">🗺️</div>
             <h3>No Itinerary Generated Yet</h3>
             <p>
-              Click <strong>"Generate Itinerary"</strong> above to let VoyageAI create a tailored day-by-day plan using your travel preferences.
+              {isOwner ? (
+                <>
+                  Click <strong>"Generate Itinerary"</strong> above to let VoyageAI create a tailored day-by-day plan using your travel preferences.
+                </>
+              ) : (
+                "The trip owner has not generated an itinerary yet. Once created, you will be able to view and edit it here."
+              )}
             </p>
           </div>
         )}

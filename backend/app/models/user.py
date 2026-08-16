@@ -54,6 +54,9 @@ class User(Base):
     trips = relationship(
         "Trip", back_populates="user", cascade="all, delete-orphan"
     )
+    trip_memberships = relationship(
+        "TripMember", back_populates="user", cascade="all, delete-orphan"
+    )
     google_calendar_connection = relationship(
         "GoogleCalendarConnection", back_populates="user", uselist=False, cascade="all, delete-orphan"
     )

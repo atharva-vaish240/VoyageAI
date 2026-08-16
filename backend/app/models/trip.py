@@ -65,8 +65,9 @@ class Trip(Base):
         onupdate=lambda: datetime.now(timezone.utc),
     )
 
-    # Relationship
+    # Relationships
     user = relationship("User", back_populates="trips")
+    members = relationship("TripMember", back_populates="trip", cascade="all, delete-orphan")
 
     def __repr__(self):
         return f"<Trip id={self.id} title={self.title!r} user_id={self.user_id}>"
