@@ -3,6 +3,7 @@ import { useNavigate } from "react-router-dom";
 import { tripsApi } from "../api/trips";
 import type { TripResponse, TripStatusFilter } from "../types/trip";
 import CreateTripModal from "../components/trips/CreateTripModal";
+import TiltedCard from "../components/ui/TiltedCard";
 import "./TripsPage.css";
 
 export default function TripsPage() {
@@ -183,75 +184,81 @@ export default function TripsPage() {
             const hasValidImage = imageUrl && !failedImageUrls[imageUrl];
 
             return (
-              <div
+              <TiltedCard
                 key={trip.id}
-                className="trip-card"
+                captionText={trip.destination || trip.title}
+                rotateAmplitude={12}
+                scaleOnHover={1.04}
+                showMobileWarning={false}
+                showTooltip={true}
                 onClick={() => navigate(`/app/trips/${trip.id}`)}
-                role="button"
-                tabIndex={0}
                 onKeyDown={(e) => {
                   if (e.key === "Enter" || e.key === " ") {
                     e.preventDefault();
                     navigate(`/app/trips/${trip.id}`);
                   }
                 }}
-                data-testid={`trip-card-${trip.id}`}
+                testId={`trip-card-${trip.id}`}
               >
-                {hasValidImage && destImg && (
-                  <div className="trip-card-image-wrapper">
-                    <img
-                      src={destImg.url}
-                      alt={trip.destination || trip.title}
-                      className="trip-card-image"
-                      onError={() => handleImageError(destImg.url)}
-                      data-testid={`trip-image-${trip.id}`}
-                    />
-                    <div
-                      className="trip-card-image-attribution"
-                      onClick={(e) => e.stopPropagation()}
-                      data-testid={`trip-attribution-${trip.id}`}
-                    >
-                      Photo by{" "}
-                      <a
-                        href={destImg.photographer_url}
-                        target="_blank"
-                        rel="noopener noreferrer"
+                <div className="trip-card">
+                  {hasValidImage && destImg && (
+                    <div className="trip-card-image-wrapper">
+                      <img
+                        src={destImg.url}
+                        alt={trip.destination || trip.title}
+                        className="trip-card-image"
+                        onError={() => handleImageError(destImg.url)}
+                        data-testid={`trip-image-${trip.id}`}
+                      />
+                      <div
+                        className="trip-card-image-attribution"
+                        onClick={(e) => e.stopPropagation()}
+                        data-testid={`trip-attribution-${trip.id}`}
                       >
-                        {destImg.photographer}
-                      </a>{" "}
-                      on{" "}
-                      <a
-                        href={destImg.pexels_url}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                      >
-                        Pexels
-                      </a>
-                    </div>
-                  </div>
-                )}
-
-                <div className="trip-card-body">
-                  <div className="trip-card-header">
-                    <h3 className="trip-card-title">{trip.title}</h3>
-                    {getStatusBadge(trip.status)}
-                  </div>
-
-                  {trip.destination && (
-                    <div className="trip-card-destination">
-                      📍 {trip.destination}
+                        Photo by{" "}
+                        <a
+                          href={destImg.photographer_url}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          onClick={(e) => e.stopPropagation()}
+                        >
+                          {destImg.photographer}
+                        </a>{" "}
+                        on{" "}
+                        <a
+                          href={destImg.pexels_url}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          onClick={(e) => e.stopPropagation()}
+                        >
+                          Pexels
+                        </a>
+                      </div>
                     </div>
                   )}
 
-                  <div className="trip-card-dates">
-                    📅 {formatDate(trip.start_date)} — {formatDate(trip.end_date)}
-                  </div>
+                  <div className="trip-card-body">
+                    <div className="trip-card-header">
+                      <h3 className="trip-card-title">{trip.title}</h3>
+                      {getStatusBadge(trip.status)}
+                    </div>
 
-                  <div className="trip-card-footer">
-                    <span className="view-details-link">View Details →</span>
+                    {trip.destination && (
+                      <div className="trip-card-destination">
+                        📍 {trip.destination}
+                      </div>
+                    )}
+
+                    <div className="trip-card-dates">
+                      📅 {formatDate(trip.start_date)} — {formatDate(trip.end_date)}
+                    </div>
+
+                    <div className="trip-card-footer">
+                      <span className="view-details-link">View Details →</span>
+                    </div>
                   </div>
                 </div>
-              </div>
+              </TiltedCard>
             );
           })}
         </div>

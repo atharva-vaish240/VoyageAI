@@ -1,16 +1,19 @@
-"""AI Service for itinerary generation and destination recommendations using Gemini."""
-
-from datetime import date
+import hashlib
 import json
-from typing import Optional
+import logging
+from datetime import date
+from typing import Any, Optional
 
 import google.generativeai as genai
 from pydantic import ValidationError
 
 from app.core.config import get_settings
+from app.core.redis import get_redis_client
 from app.models.preference import UserPreference
 from app.schemas.itinerary import ItinerarySchema
 from app.schemas.recommendation import RecommendationsResponse
+
+logger = logging.getLogger(__name__)
 
 
 class AIServiceError(Exception):
@@ -77,6 +80,147 @@ _RECOMMENDATIONS_RESPONSE_SCHEMA = {
     },
     "required": ["seasonal_pick", "hidden_gem", "experience_pick"],
 }
+
+
+def _normalize_text(val: Optional[str]) -> Optional[str]:
+    """Strip whitespace and lowercase text, returning None if empty."""
+    if val is None:
+        return None
+    cleaned = str(val).strip()
+    return cleaned.lower() if cleaned else None
+
+
+def _normalize_pref_enum(val: Any) -> Optional[str]:
+    """Normalize preference enum values, treating 'no_preference' as None."""
+    if val is None:
+        return None
+    raw = val.value if hasattr(val, "value") else str(val)
+    raw = raw.strip().lower()
+    if raw in ("", "no_preference", "none"):
+        return None
+    return raw
+
+
+def _normalize_interests(val: Optional[str]) -> Optional[str]:
+    """Normalize comma-separated interests by trimming, lowercasing, and sorting tags."""
+    if val is None:
+        return None
+    cleaned = str(val).strip()
+    if not cleaned:
+        return None
+    tags = [t.strip().lower() for t in cleaned.split(",") if t.strip()]
+    if not tags:
+        return None
+    return ", ".join(sorted(tags))
+
+
+def compute_itinerary_cache_key(
+    destination: str,
+    start_date: date,
+    end_date: date,
+    preferences: Optional[UserPreference] = None,
+    num_travellers: Optional[int] = None,
+    budget: Optional[str] = None,
+    special_requirements: Optional[str] = None,
+) -> str:
+    """Compute a deterministic, normalized SHA-256 cache key for itinerary generation inputs.
+
+    Note: user_id is explicitly NOT part of the cache key so that equivalent requests
+    across different users can reuse the same cached itinerary.
+    """
+    food = None
+    drinking = None
+    style = None
+    pace = None
+    accommodation = None
+    interests = None
+    additional = None
+
+    if preferences is not None:
+        if isinstance(preferences, dict):
+            food = _normalize_pref_enum(preferences.get("food_preference"))
+            drinking = _normalize_pref_enum(preferences.get("drinking_preference"))
+            style = _normalize_pref_enum(preferences.get("travel_style"))
+            pace = _normalize_pref_enum(preferences.get("travel_pace"))
+            accommodation = _normalize_pref_enum(preferences.get("accommodation_preference"))
+            interests = _normalize_interests(preferences.get("interests"))
+            additional = _normalize_text(preferences.get("additional_preferences"))
+        else:
+            food = _normalize_pref_enum(getattr(preferences, "food_preference", None))
+            drinking = _normalize_pref_enum(getattr(preferences, "drinking_preference", None))
+            style = _normalize_pref_enum(getattr(preferences, "travel_style", None))
+            pace = _normalize_pref_enum(getattr(preferences, "travel_pace", None))
+            accommodation = _normalize_pref_enum(getattr(preferences, "accommodation_preference", None))
+            interests = _normalize_interests(getattr(preferences, "interests", None))
+            additional = _normalize_text(getattr(preferences, "additional_preferences", None))
+
+    key_payload = {
+        "destination": _normalize_text(destination),
+        "start_date": start_date.isoformat() if hasattr(start_date, "isoformat") else str(start_date),
+        "end_date": end_date.isoformat() if hasattr(end_date, "isoformat") else str(end_date),
+        "num_travellers": int(num_travellers) if num_travellers is not None else None,
+        "budget": _normalize_text(budget),
+        "special_requirements": _normalize_text(special_requirements),
+        "preferences": {
+            "food": food,
+            "drinking": drinking,
+            "style": style,
+            "pace": pace,
+            "accommodation": accommodation,
+            "interests": interests,
+            "additional": additional,
+        },
+    }
+
+    serialized_payload = json.dumps(key_payload, sort_keys=True, separators=(",", ":"))
+    key_hash = hashlib.sha256(serialized_payload.encode("utf-8")).hexdigest()
+    return f"itinerary:{key_hash}"
+
+
+def get_cached_itinerary(cache_key: str) -> Optional[ItinerarySchema]:
+    """Retrieve and deserialize a cached itinerary from Redis.
+
+    Returns None on cache miss or if Redis is unreachable / errors out.
+    """
+    try:
+        client = get_redis_client()
+        if not client:
+            return None
+        cached_data = client.get(cache_key)
+        if not cached_data:
+            return None
+        data = json.loads(cached_data)
+        return ItinerarySchema.model_validate(data)
+    except Exception as e:
+        logger.warning(f"Redis cache read error for key '{cache_key}': {e}")
+        return None
+
+
+def set_cached_itinerary(
+    cache_key: str,
+    itinerary: ItinerarySchema,
+    ttl: Optional[int] = None,
+) -> bool:
+    """Serialize and store a structured itinerary in Redis with a TTL.
+
+    Returns True on success, False if Redis is unreachable / errors out.
+    """
+    try:
+        client = get_redis_client()
+        if not client:
+            return False
+        settings = get_settings()
+        cache_ttl = ttl if ttl is not None else settings.REDIS_CACHE_TTL
+        serialized = itinerary.model_dump_json()
+        if cache_ttl and cache_ttl > 0:
+            client.setex(cache_key, cache_ttl, serialized)
+        else:
+            client.set(cache_key, serialized)
+        logger.info(f"itinerary cache SET for key: {cache_key} (TTL={cache_ttl}s)")
+        return True
+    except Exception as e:
+        logger.warning(f"Redis cache write error for key '{cache_key}': {e}")
+        return False
 
 
 def build_itinerary_prompt(
@@ -163,7 +307,27 @@ def generate_itinerary(
     budget: Optional[str] = None,
     special_requirements: Optional[str] = None,
 ) -> ItinerarySchema:
-    """Generate a structured travel itinerary using the Gemini API."""
+    """Generate a structured travel itinerary using Redis cache or the Gemini API."""
+    # 1. Compute deterministic cache key
+    cache_key = compute_itinerary_cache_key(
+        destination=destination,
+        start_date=start_date,
+        end_date=end_date,
+        preferences=preferences,
+        num_travellers=num_travellers,
+        budget=budget,
+        special_requirements=special_requirements,
+    )
+
+    # 2. Check Redis cache first (Cache hit → return cached itinerary without calling Gemini)
+    cached_itinerary = get_cached_itinerary(cache_key)
+    if cached_itinerary is not None:
+        logger.info(f"itinerary cache HIT for key: {cache_key}")
+        return cached_itinerary
+
+    logger.info(f"itinerary cache MISS for key: {cache_key}. Calling Gemini API...")
+
+    # 3. Cache miss: Validate settings and call Gemini API
     settings = get_settings()
     if not settings.GEMINI_API_KEY:
         raise AIServiceError("GEMINI_API_KEY is not configured.")
@@ -194,7 +358,12 @@ def generate_itinerary(
             raise AIServiceError("Received empty response from Gemini API.")
 
         data = json.loads(response.text)
-        return ItinerarySchema.model_validate(data)
+        itinerary = ItinerarySchema.model_validate(data)
+
+        # 4. Successful Gemini response & validation: persist in Redis cache
+        set_cached_itinerary(cache_key, itinerary)
+
+        return itinerary
 
     except json.JSONDecodeError as e:
         raise AIServiceError(f"Failed to parse JSON response from Gemini: {e}")
@@ -206,9 +375,118 @@ def generate_itinerary(
         raise AIServiceError(f"An unexpected error occurred during Gemini API call: {e}")
 
 
-def build_recommendations_prompt(preferences: Optional[UserPreference] = None) -> str:
+def compute_recommendations_cache_key(
+    preferences: Optional[UserPreference] = None,
+    target_date: Optional[date] = None,
+) -> str:
+    """Compute a deterministic, normalized SHA-256 cache key for destination recommendations / travel suggestions.
+
+    Note: user_id is explicitly NOT part of the cache key so that equivalent requests
+    across different users can reuse the same cached recommendations.
+    """
+    period_date = target_date or date.today()
+    period_str = period_date.isoformat() if hasattr(period_date, "isoformat") else str(period_date)
+
+    food = None
+    drinking = None
+    style = None
+    pace = None
+    accommodation = None
+    interests = None
+    additional = None
+
+    if preferences is not None:
+        if isinstance(preferences, dict):
+            food = _normalize_pref_enum(preferences.get("food_preference"))
+            drinking = _normalize_pref_enum(preferences.get("drinking_preference"))
+            style = _normalize_pref_enum(preferences.get("travel_style"))
+            pace = _normalize_pref_enum(preferences.get("travel_pace"))
+            accommodation = _normalize_pref_enum(preferences.get("accommodation_preference"))
+            interests = _normalize_interests(preferences.get("interests"))
+            additional = _normalize_text(preferences.get("additional_preferences"))
+        else:
+            food = _normalize_pref_enum(getattr(preferences, "food_preference", None))
+            drinking = _normalize_pref_enum(getattr(preferences, "drinking_preference", None))
+            style = _normalize_pref_enum(getattr(preferences, "travel_style", None))
+            pace = _normalize_pref_enum(getattr(preferences, "travel_pace", None))
+            accommodation = _normalize_pref_enum(getattr(preferences, "accommodation_preference", None))
+            interests = _normalize_interests(getattr(preferences, "interests", None))
+            additional = _normalize_text(getattr(preferences, "additional_preferences", None))
+
+    key_payload = {
+        "date_period": period_str,
+        "preferences": {
+            "food": food,
+            "drinking": drinking,
+            "style": style,
+            "pace": pace,
+            "accommodation": accommodation,
+            "interests": interests,
+            "additional": additional,
+        },
+    }
+
+    serialized_payload = json.dumps(key_payload, sort_keys=True, separators=(",", ":"))
+    key_hash = hashlib.sha256(serialized_payload.encode("utf-8")).hexdigest()
+    return f"suggestions:{key_hash}"
+
+
+def get_cached_recommendations(cache_key: str) -> Optional[RecommendationsResponse]:
+    """Retrieve and deserialize cached recommendations from Redis.
+
+    Returns None on cache miss or if Redis is unreachable / errors out.
+    """
+    try:
+        client = get_redis_client()
+        if not client:
+            return None
+        cached_data = client.get(cache_key)
+        if not cached_data:
+            return None
+        data = json.loads(cached_data)
+        return RecommendationsResponse.model_validate(data)
+    except Exception as e:
+        logger.warning(f"Redis cache read error for key '{cache_key}': {e}")
+        return None
+
+
+def set_cached_recommendations(
+    cache_key: str,
+    recommendations: RecommendationsResponse,
+    ttl: Optional[int] = None,
+) -> bool:
+    """Serialize and store recommendations in Redis with a TTL.
+
+    Returns True on success, False if Redis is unreachable / errors out.
+    """
+    try:
+        client = get_redis_client()
+        if not client:
+            return False
+        settings = get_settings()
+        cache_ttl = (
+            ttl
+            if ttl is not None
+            else getattr(settings, "REDIS_RECOMMENDATION_CACHE_TTL", settings.REDIS_CACHE_TTL)
+        )
+        serialized = recommendations.model_dump_json()
+        if cache_ttl and cache_ttl > 0:
+            client.setex(cache_key, cache_ttl, serialized)
+        else:
+            client.set(cache_key, serialized)
+        logger.info(f"suggestions cache SET for key: {cache_key} (TTL={cache_ttl}s)")
+        return True
+    except Exception as e:
+        logger.warning(f"Redis cache write error for key '{cache_key}': {e}")
+        return False
+
+
+def build_recommendations_prompt(
+    preferences: Optional[UserPreference] = None,
+    target_date: Optional[date] = None,
+) -> str:
     """Construct a prompt for 3 structured destination recommendations based on current date/season and user preferences."""
-    today = date.today()
+    today = target_date or date.today()
     month_name = today.strftime("%B")
 
     prompt_parts = [
@@ -249,13 +527,29 @@ def build_recommendations_prompt(preferences: Optional[UserPreference] = None) -
 
 def generate_recommendations(
     preferences: Optional[UserPreference] = None,
+    target_date: Optional[date] = None,
 ) -> RecommendationsResponse:
-    """Generate 3 structured destination recommendations (Seasonal, Hidden Gem, Experience) using Gemini."""
+    """Generate 3 structured destination recommendations (Seasonal, Hidden Gem, Experience) using Redis cache or Gemini."""
+    # 1. Compute deterministic cache key
+    cache_key = compute_recommendations_cache_key(
+        preferences=preferences,
+        target_date=target_date,
+    )
+
+    # 2. Check Redis cache first (Cache hit → return cached recommendations without calling Gemini)
+    cached_recs = get_cached_recommendations(cache_key)
+    if cached_recs is not None:
+        logger.info(f"suggestions cache HIT for key: {cache_key}")
+        return cached_recs
+
+    logger.info(f"suggestions cache MISS for key: {cache_key}. Calling Gemini API...")
+
+    # 3. Cache miss: Validate settings and call Gemini API
     settings = get_settings()
     if not settings.GEMINI_API_KEY:
         raise AIServiceError("GEMINI_API_KEY is not configured.")
 
-    prompt = build_recommendations_prompt(preferences=preferences)
+    prompt = build_recommendations_prompt(preferences=preferences, target_date=target_date)
 
     try:
         genai.configure(api_key=settings.GEMINI_API_KEY)
@@ -273,7 +567,12 @@ def generate_recommendations(
             raise AIServiceError("Received empty response from Gemini API for recommendations.")
 
         data = json.loads(response.text)
-        return RecommendationsResponse.model_validate(data)
+        recommendations = RecommendationsResponse.model_validate(data)
+
+        # 4. Successful Gemini response & validation: persist in Redis cache
+        set_cached_recommendations(cache_key, recommendations)
+
+        return recommendations
 
     except json.JSONDecodeError as e:
         raise AIServiceError(f"Failed to parse JSON response from Gemini for recommendations: {e}")
